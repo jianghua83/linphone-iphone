@@ -118,6 +118,7 @@ static UICompositeViewDescription *compositeDescription = nil;
 											 object:nil];
 
 	[_backToCallButton update];
+	_callButton.hidden = !_backToCallButton.hidden;
 
 	if (_tableController.isEditing) {
 		[_tableController setEditing:NO];
@@ -128,6 +129,7 @@ static UICompositeViewDescription *compositeDescription = nil;
 	[_pictureButton setEnabled:fileSharingEnabled];
 
 	[self callUpdateEvent:nil];
+	PhoneMainView.instance.currentRoom = self.chatRoom;
 }
 
 - (void)viewWillDisappear:(BOOL)animated {
@@ -138,6 +140,7 @@ static UICompositeViewDescription *compositeDescription = nil;
 	[self setComposingVisible:FALSE withDelay:0]; // will hide the "user is composing.." message
 
 	[NSNotificationCenter.defaultCenter removeObserver:self];
+	PhoneMainView.instance.currentRoom = NULL;
 }
 
 - (void)didRotateFromInterfaceOrientation:(UIInterfaceOrientation)fromInterfaceOrientation {
@@ -147,12 +150,14 @@ static UICompositeViewDescription *compositeDescription = nil;
 	composingVisible = !composingVisible;
 	[self setComposingVisible:!composingVisible withDelay:0];
 	[_backToCallButton update];
+	self.callButton.hidden = !self.backToCallButton.hidden;
 	[_tableController scrollToBottom:true];
 }
 
 #pragma mark -
 
 - (void)setChatRoom:(LinphoneChatRoom *)chatRoom {
+
 	_chatRoom = chatRoom;
 	[_messageField setText:@""];
 	[_tableController setChatRoom:_chatRoom];
@@ -183,6 +188,17 @@ static UICompositeViewDescription *compositeDescription = nil;
 
 - (void)callUpdateEvent:(NSNotification *)notif {
 	_callButton.hidden = (_tableController.isEditing || linphone_core_get_current_call(LC) != NULL);
+	_backToCallButton.hidden = !_callButton.hidden;
+}
+
+- (void)markAsRead {
+	linphone_chat_room_mark_as_read(_chatRoom);
+	if (IPAD) {
+		if (IPAD) {
+			ChatsListView *listView = VIEW(ChatsListView);
+			[listView.tableController markCellAsRead:_chatRoom];
+		}
+	}
 }
 
 - (void)update {
@@ -194,15 +210,18 @@ static UICompositeViewDescription *compositeDescription = nil;
 	const LinphoneAddress *addr = linphone_chat_room_get_peer_address(_chatRoom);
 	if (addr == NULL) {
 		[PhoneMainView.instance popCurrentView];
-		UIAlertView *error = [[UIAlertView alloc]
-				initWithTitle:NSLocalizedString(@"Invalid SIP address", nil)
-					  message:NSLocalizedString(@"Either configure a SIP proxy server from settings prior to send a "
-												@"message or use a valid SIP address (I.E sip:john@example.net)",
-												nil)
-					 delegate:nil
-			cancelButtonTitle:NSLocalizedString(@"Continue", nil)
-			otherButtonTitles:nil];
-		[error show];
+		UIAlertController *errView = [UIAlertController alertControllerWithTitle:NSLocalizedString(@"Invalid SIP address", nil)
+																		 message:NSLocalizedString(@"Either configure a SIP proxy server from settings prior to send a "
+																								   @"message or use a valid SIP address (I.E sip:john@example.net)",
+																								   nil)
+																  preferredStyle:UIAlertControllerStyleAlert];
+		
+		UIAlertAction* defaultAction = [UIAlertAction actionWithTitle:NSLocalizedString(@"Continue", nil)
+																style:UIAlertActionStyleDefault
+															  handler:^(UIAlertAction * action) {}];
+		
+		[errView addAction:defaultAction];
+		[self presentViewController:errView animated:YES completion:nil];
 		return;
 	}
 	[ContactDisplay setDisplayNameLabel:_addressLabel forAddress:addr];
@@ -233,10 +252,14 @@ static UICompositeViewDescription *compositeDescription = nil;
 
 	[_tableController scrollToBottom:true];
 
+	if (linphone_core_lime_enabled(LC) == LinphoneLimeMandatory && !linphone_chat_room_lime_available(_chatRoom)) {
+		[LinphoneManager.instance alertLIME:_chatRoom];
+	}
+
 	return TRUE;
 }
 
-- (void)saveAndSend:(UIImage *)image url:(NSURL *)url {
+- (void)saveAndSend:(UIImage *)image url:(NSURL *)url withQuality:(float)quality{
 	// photo from Camera, must be saved first
 	if (url == nil) {
 		[LinphoneManager.instance.photoLibrary
@@ -245,21 +268,25 @@ static UICompositeViewDescription *compositeDescription = nil;
 						 completionBlock:^(NSURL *assetURL, NSError *error) {
 						   if (error) {
 							   LOGE(@"Cannot save image data downloaded [%@]", [error localizedDescription]);
-
-							   UIAlertView *errorAlert = [[UIAlertView alloc]
-									   initWithTitle:NSLocalizedString(@"Transfer error", nil)
-											 message:NSLocalizedString(@"Cannot write image to photo library", nil)
-											delegate:nil
-								   cancelButtonTitle:NSLocalizedString(@"Ok", nil)
-								   otherButtonTitles:nil, nil];
-							   [errorAlert show];
+							   
+							   UIAlertController *errView = [UIAlertController alertControllerWithTitle:NSLocalizedString(@"Transfer error", nil)
+																								message:NSLocalizedString(@"Cannot write image to photo library",
+																														  nil)
+																						 preferredStyle:UIAlertControllerStyleAlert];
+							   
+							   UIAlertAction* defaultAction = [UIAlertAction actionWithTitle:@"OK"
+																					   style:UIAlertActionStyleDefault
+																					 handler:^(UIAlertAction * action) {}];
+							   
+							   [errView addAction:defaultAction];
+							   [self presentViewController:errView animated:YES completion:nil];
 						   } else {
 							   LOGI(@"Image saved to [%@]", [assetURL absoluteString]);
-							   [self startImageUpload:image url:assetURL];
+							   [self startImageUpload:image url:assetURL withQuality:quality];
 						   }
 						 }];
 	} else {
-		[self startImageUpload:image url:url];
+		[self startImageUpload:image url:url withQuality:quality];
 	}
 }
 
@@ -267,14 +294,13 @@ static UICompositeViewDescription *compositeDescription = nil;
 	DTActionSheet *sheet = [[DTActionSheet alloc] initWithTitle:NSLocalizedString(@"Choose the image size", nil)];
 	dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
 	  for (NSString *key in [imageQualities allKeys]) {
-		  NSNumber *number = [imageQualities objectForKey:key];
-		  NSData *data = UIImageJPEGRepresentation(image, [number floatValue]);
+		  NSNumber *quality = [imageQualities objectForKey:key];
+		  NSData *data = UIImageJPEGRepresentation(image, [quality floatValue]);
 		  NSNumber *size = [NSNumber numberWithInteger:[data length]];
-
 		  NSString *text = [NSString stringWithFormat:@"%@ (%@)", key, [size toHumanReadableSize]];
 		  [sheet addButtonWithTitle:text
 							  block:^() {
-								[self saveAndSend:[UIImage imageWithData:data] url:url];
+								[self saveAndSend:image url:url withQuality:[quality floatValue]];
 							  }];
 	  }
 	  [sheet addCancelButtonWithTitle:NSLocalizedString(@"Cancel", nil) block:nil];
@@ -331,11 +357,12 @@ static UICompositeViewDescription *compositeDescription = nil;
 
 	if (fromStr && cr_from_string) {
 		if (strcasecmp(cr_from_string, fromStr) == 0) {
-			if ([UIApplication sharedApplication].applicationState != UIApplicationStateBackground) {
+			if ([UIApplication sharedApplication].applicationState == UIApplicationStateActive) {
 				linphone_chat_room_mark_as_read(room);
-				[NSNotificationCenter.defaultCenter postNotificationName:kLinphoneMessageReceived object:self];
 			}
+			[NSNotificationCenter.defaultCenter postNotificationName:kLinphoneMessageReceived object:self];
 			[_tableController addChatEntry:chat];
+			[self setComposingVisible:FALSE withDelay:0];
 			[_tableController scrollToLastUnread:TRUE];
 		}
 	}
@@ -516,6 +543,9 @@ static UICompositeViewDescription *compositeDescription = nil;
 - (IBAction)onEditionChangeClick:(id)sender {
 	_backButton.hidden = _callButton.hidden = _tableController.isEditing;
 	[_backToCallButton update];
+	if (!_backToCallButton.hidden) {
+		_callButton.hidden = TRUE;
+	}
 }
 
 - (IBAction)onCallClick:(id)sender {
@@ -541,9 +571,9 @@ static UICompositeViewDescription *compositeDescription = nil;
 
 #pragma mark ChatRoomDelegate
 
-- (BOOL)startImageUpload:(UIImage *)image url:(NSURL *)url {
+- (BOOL)startImageUpload:(UIImage *)image url:(NSURL *)url withQuality:(float)quality {
 	FileTransferDelegate *fileTransfer = [[FileTransferDelegate alloc] init];
-	[fileTransfer upload:image withURL:url forChatRoom:_chatRoom];
+	[fileTransfer upload:image withURL:url forChatRoom:_chatRoom withQuality:quality];
 	[_tableController addChatEntry:linphone_chat_message_ref(fileTransfer.message)];
 	[_tableController scrollToBottom:true];
 	return TRUE;

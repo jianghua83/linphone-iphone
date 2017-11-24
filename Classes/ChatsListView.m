@@ -31,6 +31,10 @@
 										   selector:@selector(textReceivedEvent:)
 											   name:kLinphoneMessageReceived
 											 object:nil];
+	[NSNotificationCenter.defaultCenter addObserver:self
+										   selector:@selector(callUpdateEvent:)
+											   name:kLinphoneCallUpdate
+											 object:nil];
 	[_backToCallButton update];
 	[self setEditing:NO];
 }
@@ -39,12 +43,17 @@
 	[super viewWillDisappear:animated];
 
 	[NSNotificationCenter.defaultCenter removeObserver:self name:kLinphoneMessageReceived object:nil];
+	self.view = NULL;
 }
 
 #pragma mark - Event Functions
 
 - (void)textReceivedEvent:(NSNotification *)notif {
 	[_tableController loadData];
+}
+
+- (void)callUpdateEvent:(NSNotification *)notif {
+	[_backToCallButton update];
 }
 
 #pragma mark - UICompositeViewDelegate Functions

@@ -39,6 +39,11 @@ static UICompositeViewDescription *compositeDescription = nil;
 	if (IPAD) {
 		_backButton.hidden = YES;
 	}
+	UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc]
+								   initWithTarget:self
+								   action:@selector(dismissKeyboards)];
+	tap.delegate = self;
+	[self.view addGestureRecognizer:tap];
 }
 
 - (void)viewWillAppear:(BOOL)animated {
@@ -51,4 +56,18 @@ static UICompositeViewDescription *compositeDescription = nil;
 - (IBAction)onBackClick:(id)sender {
 	[PhoneMainView.instance popCurrentView];
 }
+
+- (void)dismissKeyboards {
+	if ([self.tableController.searchBar isFirstResponder]) {
+		[self.tableController.searchBar resignFirstResponder];
+	}
+}
+
+#pragma mark - GestureRecognizerDelegate
+
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldReceiveTouch:(UITouch *)touch
+{
+	return NO;
+}
+
 @end

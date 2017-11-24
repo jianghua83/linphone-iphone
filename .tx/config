@@ -211,3 +211,24 @@ source_file = Settings/InAppSettings.bundle/en.lproj/Tunnel.strings
 source_lang = en
 file_filter = Settings/InAppSettings.bundle/<lang>.lproj/Video.strings
 source_file = Settings/InAppSettings.bundle/en.lproj/Video.strings
+
+[linphone-ios.shopviewstrings]
+source_lang = en
+file_filter = Classes/<lang>.lproj/ShopView.strings
+source_file = Classes/en.lproj/ShopView.strings
+
+[linphone-ios.assistantlinkviewstrings]
+source_lang = en
+file_filter = Classes/<lang>.lproj/AssistantLinkView.strings
+source_file = Classes/Base.lproj/AssistantLinkView.strings
+
+[linphone-ios.countrylistviewstrings]
+source_lang = en
+file_filter = Classes/<lang>.lproj/CountryListView.strings
+source_file = Classes/Base.lproj/CountryListView.strings
+
+[linphone-ios.inappsettingschatstrings]
+source_lang = en
+file_filter = Settings/InAppSettings.bundle/<lang>.lproj/Chat.strings
+source_file = Settings/InAppSettings.bundle/en.lproj/Chat.strings
+type = STRINGS

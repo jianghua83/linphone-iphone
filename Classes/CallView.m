@@ -17,12 +17,14 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-#import <AudioToolbox/AudioToolbox.h>
+#import <AVFoundation/AVAudioSession.h>
 #import <AddressBook/AddressBook.h>
-#import <QuartzCore/CAAnimation.h>
-#import <QuartzCore/QuartzCore.h>
+#import <AudioToolbox/AudioToolbox.h>
 #import <OpenGLES/EAGL.h>
 #import <OpenGLES/EAGLDrawable.h>
+#import <QuartzCore/CAAnimation.h>
+#import <QuartzCore/QuartzCore.h>
+#import <UserNotifications/UserNotifications.h>
 
 #import "CallView.h"
 #import "CallSideMenuView.h"
@@ -150,7 +152,6 @@ static UICompositeViewDescription *compositeDescription = nil;
 	linphone_core_set_native_preview_window_id(LC, (__bridge void *)(_videoPreview));
 
 	[self previewTouchLift];
-
 	// Enable tap
 	[singleFingerTap setEnabled:TRUE];
 
@@ -178,7 +179,7 @@ static UICompositeViewDescription *compositeDescription = nil;
 	[super viewDidAppear:animated];
 
 	[[UIApplication sharedApplication] setIdleTimerDisabled:YES];
-	UIDevice.currentDevice.proximityMonitoringEnabled = YES;
+	UIDevice.currentDevice.proximityMonitoringEnabled = !_speakerButton.enabled;
 
 	[PhoneMainView.instance setVolumeHidden:TRUE];
 	hiddenVolume = TRUE;
@@ -420,7 +421,7 @@ static void hideSpinner(LinphoneCall *call, void *user_data) {
 		[ContactDisplay setDisplayNameLabel:_nameLabel forAddress:addr];
 		char *uri = linphone_address_as_string_uri_only(addr);
 		ms_free(uri);
-		[_avatarImage setImage:[FastAddressBook imageForAddress:addr thumbnail:NO] bordered:YES withRoundedRadius:YES];
+		[_avatarImage setImage:[FastAddressBook imageForAddress:addr] bordered:YES withRoundedRadius:YES];
 	}
 }
 
@@ -537,19 +538,22 @@ static void hideSpinner(LinphoneCall *call, void *user_data) {
 			if (!linphone_call_params_video_enabled(linphone_call_get_current_params(call))) {
 				const LinphoneCallParams *param = linphone_call_get_current_params(call);
 				const LinphoneCallAppData *callAppData =
-					(__bridge const LinphoneCallAppData *)(linphone_call_get_user_pointer(call));
+					(__bridge const LinphoneCallAppData *)(linphone_call_get_user_data(call));
 				if (state == LinphoneCallStreamsRunning && callAppData->videoRequested &&
 					linphone_call_params_low_bandwidth_enabled(param)) {
 					// too bad video was not enabled because low bandwidth
-					UIAlertView *alert = [[UIAlertView alloc]
-							initWithTitle:NSLocalizedString(@"Low bandwidth", nil)
-								  message:NSLocalizedString(@"Video cannot be activated because of low bandwidth "
-															@"condition, only audio is available",
-															nil)
-								 delegate:nil
-						cancelButtonTitle:NSLocalizedString(@"Continue", nil)
-						otherButtonTitles:nil];
-					[alert show];
+					UIAlertController *errView = [UIAlertController alertControllerWithTitle:NSLocalizedString(@"Low bandwidth", nil)
+																					 message:NSLocalizedString(@"Video cannot be activated because of low bandwidth "
+																											   @"condition, only audio is available",
+																											   nil)
+																			  preferredStyle:UIAlertControllerStyleAlert];
+						
+					UIAlertAction* defaultAction = [UIAlertAction actionWithTitle:NSLocalizedString(@"Continue", nil)
+																			style:UIAlertActionStyleDefault
+																		  handler:^(UIAlertAction * action) {}];
+						
+					[errView addAction:defaultAction];
+					[self presentViewController:errView animated:YES completion:nil];
 					callAppData->videoRequested = FALSE; /*reset field*/
 				}
 			}
@@ -560,9 +564,11 @@ static void hideSpinner(LinphoneCall *call, void *user_data) {
 			const LinphoneCallParams *remote = linphone_call_get_remote_params(call);
 
 			/* remote wants to add video */
-			if (linphone_core_video_display_enabled(LC) && !linphone_call_params_video_enabled(current) &&
-				linphone_call_params_video_enabled(remote) &&
-				!linphone_core_get_video_policy(LC)->automatically_accept) {
+			if ((linphone_core_video_display_enabled(LC) && !linphone_call_params_video_enabled(current) &&
+				 linphone_call_params_video_enabled(remote)) &&
+				(!linphone_core_get_video_policy(LC)->automatically_accept ||
+				 (([UIApplication sharedApplication].applicationState != UIApplicationStateActive) &&
+				  floor(NSFoundationVersionNumber) > NSFoundationVersionNumber_iOS_9_x_Max))) {
 				linphone_core_defer_call_update(LC, call);
 				[self displayAskToEnableVideoCall:call];
 			} else if (linphone_call_params_video_enabled(current) && !linphone_call_params_video_enabled(remote)) {
@@ -590,41 +596,67 @@ static void hideSpinner(LinphoneCall *call, void *user_data) {
 #pragma mark - ActionSheet Functions
 
 - (void)displayAskToEnableVideoCall:(LinphoneCall *)call {
-	if (linphone_core_get_video_policy(LC)->automatically_accept)
+	if (linphone_call_params_get_local_conference_mode(linphone_call_get_current_params(call))) {
+		return;
+	}
+	if (linphone_core_get_video_policy(LC)->automatically_accept &&
+		!([UIApplication sharedApplication].applicationState != UIApplicationStateActive))
 		return;
 
 	NSString *username = [FastAddressBook displayNameForAddress:linphone_call_get_remote_address(call)];
 	NSString *title = [NSString stringWithFormat:NSLocalizedString(@"%@ would like to enable video", nil), username];
-	UIConfirmationDialog *sheet = [UIConfirmationDialog ShowWithMessage:title
-		cancelMessage:nil
-		confirmMessage:NSLocalizedString(@"ACCEPT", nil)
-		onCancelClick:^() {
-		  LOGI(@"User declined video proposal");
-		  if (call == linphone_core_get_current_call(LC)) {
-			  LinphoneCallParams *paramsCopy = linphone_call_params_copy(linphone_call_get_current_params(call));
-			  linphone_core_accept_call_update(LC, call, paramsCopy);
-			  linphone_call_params_destroy(paramsCopy);
-			  [videoDismissTimer invalidate];
-			  videoDismissTimer = nil;
-		  }
-		}
-		onConfirmationClick:^() {
-		  LOGI(@"User accept video proposal");
-		  if (call == linphone_core_get_current_call(LC)) {
-			  LinphoneCallParams *paramsCopy = linphone_call_params_copy(linphone_call_get_current_params(call));
-			  linphone_call_params_enable_video(paramsCopy, TRUE);
-			  linphone_core_accept_call_update(LC, call, paramsCopy);
-			  linphone_call_params_destroy(paramsCopy);
-			  [videoDismissTimer invalidate];
-			  videoDismissTimer = nil;
-		  }
-		}
-		inController:self];
-	videoDismissTimer = [NSTimer scheduledTimerWithTimeInterval:30
-														 target:self
-													   selector:@selector(dismissVideoActionSheet:)
-													   userInfo:sheet
-														repeats:NO];
+	if ([UIApplication sharedApplication].applicationState != UIApplicationStateActive &&
+		floor(NSFoundationVersionNumber) > NSFoundationVersionNumber_iOS_9_x_Max) {
+		UNMutableNotificationContent *content = [[UNMutableNotificationContent alloc] init];
+		content.title = NSLocalizedString(@"Video request", nil);
+		content.body = title;
+		content.categoryIdentifier = @"video_request";
+		content.userInfo = @{
+			@"CallId" : [NSString stringWithUTF8String:linphone_call_log_get_call_id(linphone_call_get_call_log(call))]
+		};
+
+		UNNotificationRequest *req =
+			[UNNotificationRequest requestWithIdentifier:@"video_request" content:content trigger:NULL];
+		[[UNUserNotificationCenter currentNotificationCenter] addNotificationRequest:req
+															   withCompletionHandler:^(NSError *_Nullable error) {
+																 // Enable or disable features based on authorization.
+																 if (error) {
+																	 LOGD(@"Error while adding notification request :");
+																	 LOGD(error.description);
+																 }
+															   }];
+	} else {
+		UIConfirmationDialog *sheet = [UIConfirmationDialog ShowWithMessage:title
+			cancelMessage:nil
+			confirmMessage:NSLocalizedString(@"ACCEPT", nil)
+			onCancelClick:^() {
+			  LOGI(@"User declined video proposal");
+			  if (call == linphone_core_get_current_call(LC)) {
+				  LinphoneCallParams *params = linphone_core_create_call_params(LC, call);
+				  linphone_call_accept_update(call, params);
+				  linphone_call_params_destroy(params);
+				  [videoDismissTimer invalidate];
+				  videoDismissTimer = nil;
+			  }
+			}
+			onConfirmationClick:^() {
+			  LOGI(@"User accept video proposal");
+			  if (call == linphone_core_get_current_call(LC)) {
+				  LinphoneCallParams *params = linphone_core_create_call_params(LC, call);
+				  linphone_call_params_enable_video(params, TRUE);
+				  linphone_call_accept_update(call, params);
+				  linphone_call_params_destroy(params);
+				  [videoDismissTimer invalidate];
+				  videoDismissTimer = nil;
+			  }
+			}
+			inController:self];
+		videoDismissTimer = [NSTimer scheduledTimerWithTimeInterval:30
+															 target:self
+														   selector:@selector(dismissVideoActionSheet:)
+														   userInfo:sheet
+															repeats:NO];
+	}
 }
 
 - (void)dismissVideoActionSheet:(NSTimer *)timer {
@@ -682,6 +714,7 @@ static void hideSpinner(LinphoneCall *call, void *user_data) {
 
 - (IBAction)onRoutesBluetoothClick:(id)sender {
 	[self hideRoutes:TRUE animated:TRUE];
+	[LinphoneManager.instance setSpeakerEnabled:FALSE];
 	[LinphoneManager.instance setBluetoothEnabled:TRUE];
 }
 
@@ -693,6 +726,7 @@ static void hideSpinner(LinphoneCall *call, void *user_data) {
 
 - (IBAction)onRoutesSpeakerClick:(id)sender {
 	[self hideRoutes:TRUE animated:TRUE];
+	[LinphoneManager.instance setBluetoothEnabled:FALSE];
 	[LinphoneManager.instance setSpeakerEnabled:TRUE];
 }
 

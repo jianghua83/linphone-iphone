@@ -94,7 +94,7 @@
 	[self startChatWith:[self me]];
 	[self uploadImageWithQuality:quality];
 	// wait for the upload to terminate...
-	for (int i = 0; i < 90; i++) {
+	for (int i = 0; i < 180; i++) {
 		[tester waitForTimeInterval:1.f];
 		if (LinphoneManager.instance.fileTransferDelegates.count == 0)
 			break;
@@ -175,7 +175,7 @@
 }
 
 - (void)testPerformanceHugeConversation {
-	int count = 0;
+	size_t count = 0;
 	LinphoneCore *lc = [LinphoneManager getLc];
 	LinphoneChatRoom *room = linphone_core_get_chat_room_from_uri(lc, [[self me] UTF8String]);
 
@@ -187,20 +187,22 @@
 	// generate lots of messages...
 	for (; count < 50; count++) {
 		LinphoneChatMessage *msg =
-			linphone_chat_room_create_message(room, [[NSString stringWithFormat:@"Message %d", count + 1] UTF8String]);
+			linphone_chat_room_create_message(room, [[NSString stringWithFormat:@"Message %lu", count + 1] UTF8String]);
 		linphone_chat_room_send_chat_message(room, msg);
 	}
 
-	for (int i = 0; i < 25; i++) {
-		[tester waitForTimeInterval:1.f];
-		if (linphone_chat_room_get_history_size(room) == count * 2) {
+	for (int i = 0; i < 50; i++) {
+		[tester waitForTimeInterval:.5f];
+
+		if (bctbx_list_size(linphone_chat_room_get_history(room, 0)) == count) {
 			break;
 		}
 	}
 
-	[tester waitForViewWithAccessibilityLabel:@"Contact name, Message"
-										value:[NSString stringWithFormat:@"%@, Message %d (%d)", self.me, count, count]
-									   traits:UIAccessibilityTraitStaticText];
+	[tester
+		waitForViewWithAccessibilityLabel:@"Contact name, Message"
+									value:[NSString stringWithFormat:@"%@, Message %lu (%lu)", self.me, count, count]
+								   traits:UIAccessibilityTraitStaticText];
 
 	NSTimeInterval before = [[NSDate date] timeIntervalSince1970];
 	[tester tapRowAtIndexPath:[NSIndexPath indexPathForRow:0 inSection:0]

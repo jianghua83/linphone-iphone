@@ -17,6 +17,7 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
+#import <AVFoundation/AVAudioSession.h>
 #import <AudioToolbox/AudioToolbox.h>
 #import "UISpeakerButton.h"
 #import "Utils.h"
@@ -41,13 +42,8 @@ INIT_WITH_COMMON_CF {
 #pragma mark - UIToggleButtonDelegate Functions
 
 - (void)audioRouteChangeListenerCallback:(NSNotification *)notif {
-#pragma deploymate push "ignored-api-availability"
-	if (UIDevice.currentDevice.systemVersion.doubleValue < 7 ||
-		[[notif.userInfo valueForKey:AVAudioSessionRouteChangeReasonKey] integerValue] ==
-			AVAudioSessionRouteChangeReasonRouteConfigurationChange) {
-		[self update];
-	}
-#pragma deploymate pop
+	dispatch_async(dispatch_get_main_queue(), ^{
+		[self update];});
 }
 
 - (void)onOn {

@@ -40,6 +40,23 @@
 			[self addSubview:sub];
 		}
 	}
+
+	UITapGestureRecognizer *limeRecognizer =
+	[[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(onLime)];
+	limeRecognizer.numberOfTapsRequired = 1;
+	[_LIMEKO addGestureRecognizer:limeRecognizer];
+	_LIMEKO.userInteractionEnabled = YES;
+	UITapGestureRecognizer *resendRecognizer =
+	[[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(onResend)];
+	resendRecognizer.numberOfTapsRequired = 1;
+	[_imdmIcon addGestureRecognizer:resendRecognizer];
+	_imdmIcon.userInteractionEnabled = YES;
+	UITapGestureRecognizer *resendRecognizer2 =
+	[[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(onResend)];
+	resendRecognizer2.numberOfTapsRequired = 1;
+	[_imdmLabel addGestureRecognizer:resendRecognizer2];
+	_imdmLabel.userInteractionEnabled = YES;
+
 	return self;
 }
 
@@ -83,10 +100,13 @@
 }
 
 + (NSString *)ContactDateForChat:(LinphoneChatMessage *)message {
-	return [NSString
-		stringWithFormat:@"%@ - %@", [LinphoneUtils timeToString:linphone_chat_message_get_time(message)
-													  withFormat:LinphoneDateChatBubble],
-						 [FastAddressBook displayNameForAddress:linphone_chat_message_get_from_address(message)]];
+	const LinphoneAddress *address =
+		linphone_chat_message_get_from_address(message)
+			? linphone_chat_message_get_from_address(message)
+			: linphone_chat_room_get_peer_address(linphone_chat_message_get_chat_room(message));
+	return [NSString stringWithFormat:@"%@ - %@", [LinphoneUtils timeToString:linphone_chat_message_get_time(message)
+																   withFormat:LinphoneDateChatBubble],
+									  [FastAddressBook displayNameForAddress:address]];
 }
 
 - (NSString *)textMessage {
@@ -121,8 +141,7 @@
 	if (outgoing) {
 		_avatarImage.image = [LinphoneUtils selfAvatar];
 	} else {
-		[_avatarImage setImage:[FastAddressBook imageForAddress:linphone_chat_message_get_peer_address(_message)
-													  thumbnail:YES]
+		[_avatarImage setImage:[FastAddressBook imageForAddress:linphone_chat_message_get_peer_address(_message)]
 					  bordered:NO
 			 withRoundedRadius:YES];
 	}
@@ -133,22 +152,10 @@
 	_contactDateLabel.textColor = [UIColor colorWithPatternImage:_backgroundColorImage.image];
 
 	if (outgoing && state == LinphoneChatMessageStateInProgress) {
-		_statusErrorImage.hidden = YES;
 		[_statusInProgressSpinner startAnimating];
-	} else if (outgoing &&
-			   (state == LinphoneChatMessageStateNotDelivered || state == LinphoneChatMessageStateFileTransferError)) {
-		_statusErrorImage.hidden = NO;
-		[_statusInProgressSpinner stopAnimating];
-
-		NSAttributedString *resend_text =
-			[[NSAttributedString alloc] initWithString:NSLocalizedString(@"Resend", @"Resend")
-											attributes:@{NSForegroundColorAttributeName : [UIColor redColor]}];
-		[_contactDateLabel setAttributedText:resend_text];
 	} else if (!outgoing && state == LinphoneChatMessageStateFileTransferError) {
-		_statusErrorImage.hidden = NO;
 		[_statusInProgressSpinner stopAnimating];
 	} else {
-		_statusErrorImage.hidden = YES;
 		[_statusInProgressSpinner stopAnimating];
 	}
 
@@ -156,6 +163,23 @@
 		[_messageText setAccessibilityLabel:@"Outgoing message"];
 	} else {
 		[_messageText setAccessibilityLabel:@"Incoming message"];
+		if ([UIApplication sharedApplication].applicationState == UIApplicationStateActive) {
+			VIEW(ChatConversationView).markAsRead;
+		}
+	}
+
+	if (outgoing &&
+		(state == LinphoneChatMessageStateDeliveredToUser || state == LinphoneChatMessageStateDisplayed ||
+		 state == LinphoneChatMessageStateNotDelivered || state == LinphoneChatMessageStateFileTransferError)) {
+		[self displayImdmStatus:state];
+	} else
+		[self displayImdmStatus:LinphoneChatMessageStateInProgress];
+
+	if (!outgoing && !linphone_chat_message_is_secured(_message) &&
+		linphone_core_lime_enabled(LC) == LinphoneLimeMandatory) {
+		_LIMEKO.hidden = FALSE;
+	} else {
+		_LIMEKO.hidden = TRUE;
 	}
 }
 
@@ -168,9 +192,24 @@
 	_resendRecognizer.enabled = !editing;
 }
 
+- (void)displayLIMEWarning {
+	UIAlertController *errView =
+		[UIAlertController alertControllerWithTitle:NSLocalizedString(@"LIME warning", nil)
+											message:NSLocalizedString(@"This message is not encrypted.", nil)
+									 preferredStyle:UIAlertControllerStyleAlert];
+
+	UIAlertAction *defaultAction = [UIAlertAction actionWithTitle:NSLocalizedString(@"OK", nil)
+															style:UIAlertActionStyleDefault
+														  handler:^(UIAlertAction *action){
+														  }];
+
+	[errView addAction:defaultAction];
+	[PhoneMainView.instance presentViewController:errView animated:YES completion:nil];
+}
+
 #pragma mark - Action Functions
 
-- (IBAction)onDeleteClick:(id)event {
+- (void)onDelete {
 	if (_message != NULL) {
 		UITableView *tableView = VIEW(ChatConversationView).tableController.tableView;
 		NSIndexPath *indexPath = [tableView indexPathForCell:self];
@@ -180,38 +219,42 @@
 	}
 }
 
-- (IBAction)onResendClick:(id)event {
+- (void)onLime {
+	if (!_LIMEKO.hidden)
+		[self displayLIMEWarning];
+}
+
+- (void)onResend {
 	if (_message == nil || !linphone_chat_message_is_outgoing(_message))
 		return;
 
 	LinphoneChatMessageState state = linphone_chat_message_get_state(_message);
-	if (state == LinphoneChatMessageStateNotDelivered || state == LinphoneChatMessageStateFileTransferError) {
-		if (linphone_chat_message_get_file_transfer_information(_message) != NULL) {
-			NSString *localImage = [LinphoneManager getMessageAppDataForKey:@"localimage" inMessage:_message];
-			NSURL *imageUrl = [NSURL URLWithString:localImage];
+	if (state != LinphoneChatMessageStateNotDelivered && state != LinphoneChatMessageStateFileTransferError)
+		return;
 
-			[self onDeleteClick:nil];
-
-			[LinphoneManager.instance.photoLibrary assetForURL:imageUrl
-				resultBlock:^(ALAsset *asset) {
-				  dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, (unsigned long)NULL),
-								 ^(void) {
-								   UIImage *image = [[UIImage alloc] initWithCGImage:[asset thumbnail]];
-								   [_chatRoomDelegate startImageUpload:image url:imageUrl];
-								 });
-				}
-				failureBlock:^(NSError *error) {
-				  LOGE(@"Can't read image");
-				}];
-		} else {
-			[self onDeleteClick:nil];
-
-			double delayInSeconds = 0.4;
-			dispatch_time_t popTime = dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delayInSeconds * NSEC_PER_SEC));
-			dispatch_after(popTime, dispatch_get_main_queue(), ^(void) {
-			  [_chatRoomDelegate resendChat:self.textMessage withExternalUrl:nil];
-			});
-		}
+	if (linphone_chat_message_get_file_transfer_information(_message) != NULL) {
+		NSString *localImage = [LinphoneManager getMessageAppDataForKey:@"localimage" inMessage:_message];
+		NSNumber *uploadQuality =[LinphoneManager getMessageAppDataForKey:@"uploadQuality" inMessage:_message];
+		NSURL *imageUrl = [NSURL URLWithString:localImage];
+		[self onDelete];
+		[LinphoneManager.instance.photoLibrary assetForURL:imageUrl
+			resultBlock:^(ALAsset *asset) {
+			  dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, (unsigned long)NULL),
+							 ^(void) {
+								UIImage *image = [[UIImage alloc] initWithCGImage:[[asset defaultRepresentation] fullResolutionImage]];
+								[_chatRoomDelegate startImageUpload:image url:imageUrl withQuality:(uploadQuality ? [uploadQuality floatValue] : 0.9)];
+							 });
+			}
+			failureBlock:^(NSError *error) {
+			  LOGE(@"Can't read image");
+			}];
+	} else {
+		[self onDelete];
+		double delayInSeconds = 0.4;
+		dispatch_time_t popTime = dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delayInSeconds * NSEC_PER_SEC));
+		dispatch_after(popTime, dispatch_get_main_queue(), ^(void) {
+		  [_chatRoomDelegate resendChat:self.textMessage withExternalUrl:nil];
+		});
 	}
 }
 #pragma mark - State changed handling
@@ -219,6 +262,33 @@ static void message_status(LinphoneChatMessage *msg, LinphoneChatMessageState st
 	LOGI(@"State for message [%p] changed to %s", msg, linphone_chat_message_state_to_string(state));
 	ChatConversationView *view = VIEW(ChatConversationView);
 	[view.tableController updateChatEntry:msg];
+}
+
+- (void)displayImdmStatus:(LinphoneChatMessageState)state {
+	if (state == LinphoneChatMessageStateDeliveredToUser) {
+		[_imdmIcon setImage:[UIImage imageNamed:@"chat_delivered"]];
+		[_imdmLabel setText:NSLocalizedString(@"Delivered", nil)];
+		[_imdmLabel setTextColor:[UIColor grayColor]];
+		[_imdmIcon setHidden:FALSE];
+		[_imdmLabel setHidden:FALSE];
+	} else if (state == LinphoneChatMessageStateDisplayed) {
+		[_imdmIcon setImage:[UIImage imageNamed:@"chat_read"]];
+		[_imdmLabel setText:NSLocalizedString(@"Displayed", nil)];
+		[_imdmLabel
+			setTextColor:([UIColor colorWithRed:(24 / 255.0) green:(167 / 255.0) blue:(175 / 255.0) alpha:1.0])];
+
+		[_imdmIcon setHidden:FALSE];
+		[_imdmLabel setHidden:FALSE];
+	} else if (state == LinphoneChatMessageStateNotDelivered || state == LinphoneChatMessageStateFileTransferError) {
+		[_imdmIcon setImage:[UIImage imageNamed:@"chat_error"]];
+		[_imdmLabel setText:NSLocalizedString(@"Resend", nil)];
+		[_imdmLabel setTextColor:[UIColor redColor]];
+		[_imdmIcon setHidden:FALSE];
+		[_imdmLabel setHidden:FALSE];
+	} else {
+		[_imdmIcon setHidden:TRUE];
+		[_imdmLabel setHidden:TRUE];
+	}
 }
 
 #pragma mark - Bubble size computing
@@ -245,9 +315,9 @@ static void message_status(LinphoneChatMessage *msg, LinphoneChatMessageState st
 }
 
 static const CGFloat CELL_MIN_HEIGHT = 60.0f;
-static const CGFloat CELL_MIN_WIDTH = 150.0f;
+static const CGFloat CELL_MIN_WIDTH = 190.0f;
 static const CGFloat CELL_MESSAGE_X_MARGIN = 78 + 10.0f;
-static const CGFloat CELL_MESSAGE_Y_MARGIN = 44;
+static const CGFloat CELL_MESSAGE_Y_MARGIN = 52; // 44;
 static const CGFloat CELL_IMAGE_HEIGHT = 100.0f;
 static const CGFloat CELL_IMAGE_WIDTH = 100.0f;
 

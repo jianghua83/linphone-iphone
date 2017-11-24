@@ -46,9 +46,6 @@
 [submodule "submodules/externals/antlr3"]
 	path = submodules/externals/antlr3
 	url = git://git.linphone.org/antlr3.git
-[submodule "submodules/externals/polarssl"]
-	path = submodules/externals/polarssl
-	url = git://git.linphone.org/polarssl.git
 [submodule "submodules/externals/opus"]
 	path = submodules/externals/opus
 	url = git://git.linphone.org/opus.git
@@ -56,10 +53,6 @@
 [submodule "submodules/externals/libxml2"]
 	path = submodules/externals/libxml2
 	url = git://git.gnome.org/libxml2
-	ignore = dirty
-[submodule "submodules/cunit"]
-	path = submodules/cunit
-	url = git://git.linphone.org/cunit.git
 	ignore = dirty
 [submodule "submodules/externals/openh264"]
 	path = submodules/externals/openh264
@@ -82,9 +75,6 @@
 	path = submodules/externals/vo-amrwbenc
 	url = git://git.linphone.org/vo-amrwbenc.git
 	ignore = dirty
-[submodule "submodules/externals/libmatroska-c"]
-	path = submodules/externals/libmatroska-c
-	url = git://git.linphone.org/libmatroska-c.git
 [submodule "submodules/belr"]
 	path = submodules/belr
 	url = git://git.linphone.org/belr
@@ -94,3 +84,30 @@
 [submodule "submodules/bctoolbox"]
 	path = submodules/bctoolbox
 	url = git://git.linphone.org/bctoolbox
+[submodule "submodules/externals/mbedtls"]
+	path = submodules/externals/mbedtls
+	url = git://git.linphone.org/mbedtls.git
+[submodule "submodules/externals/codec2"]
+	path = submodules/externals/codec2
+	url = git://git.linphone.org/codec2.git
+[submodule "submodules/mscodec2"]
+	path = submodules/mscodec2
+	url = git://git.linphone.org/mscodec2.git
+[submodule "submodules/externals/bv16-floatingpoint"]
+	path = submodules/externals/bv16-floatingpoint
+	url = git://git.linphone.org/bv16-floatingpoint.git
+[submodule "submodules/bcunit"]
+	path = submodules/bcunit
+	url = git://git.linphone.org/bcunit.git
+[submodule "submodules/externals/libjpeg-turbo"]
+	path = submodules/externals/libjpeg-turbo
+	url = git://git.linphone.org/libjpeg-turbo.git
+[submodule "submodules/mediastreamer2"]
+	path = submodules/mediastreamer2
+	url = git://git.linphone.org/mediastreamer2.git
+[submodule "submodules/ortp"]
+	path = submodules/ortp
+	url = git://git.linphone.org/ortp.git
+[submodule "submodules/bcmatroska2"]
+	path = submodules/bcmatroska2
+	url = git://git.linphone.org/bcmatroska2.git

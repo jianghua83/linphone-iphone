@@ -21,34 +21,41 @@
 #import <AddressBook/AddressBook.h>
 
 #include "linphone/linphonecore.h"
+#include "Contact.h"
 
-@interface FastAddressBook :  NSObject {
-	ABAddressBookRef addressBook;
-}
+@interface FastAddressBook : NSObject
 
 @property(readonly, nonatomic) NSMutableDictionary *addressBookMap;
+@property BOOL needToUpdate;
 
-- (void)reload;
-- (void)saveAddressBook;
-- (int)removeContact:(ABRecordRef)contact;
+- (BOOL)reloadAllContacts;
+//- (void)saveAddressBook;
+- (BOOL)deleteContact:(Contact *)contact;
+- (BOOL)deleteCNContact:(CNContact *)CNContact;
+- (BOOL)deleteAllContacts;
+- (BOOL)saveContact:(Contact *)contact;
+- (BOOL)saveCNContact:(CNContact *)CNContact contact:(Contact *)Contact;
 
 + (BOOL)isAuthorized;
 
 // TOOLS
 
-+ (ABRecordRef)getContactWithAddress:(const LinphoneAddress *)address;
++ (Contact *)getContactWithAddress:(const LinphoneAddress *)address;
+- (CNContact *)getCNContactFromContact:(Contact *)acontact;
 
-+ (UIImage *)imageForContact:(ABRecordRef)contact thumbnail:(BOOL)thumbnail;
-+ (UIImage *)imageForAddress:(const LinphoneAddress *)addr thumbnail:(BOOL)thumbnail;
++ (UIImage *)imageForContact:(Contact *)contact;
++ (UIImage *)imageForAddress:(const LinphoneAddress *)addr;
 
-+ (BOOL)contactHasValidSipDomain:(ABRecordRef)person;
++ (BOOL)contactHasValidSipDomain:(Contact *)person;
++ (BOOL)isSipURIValid:(NSString*)addr;
 
-+ (NSString *)displayNameForContact:(ABRecordRef)person;
++ (NSString *)displayNameForContact:(Contact *)person;
 + (NSString *)displayNameForAddress:(const LinphoneAddress *)addr;
 
 + (BOOL)isSipURI:(NSString *)address;						  // should be removed
 + (NSString *)normalizeSipURI:(NSString *)address;			  // should be removed
 
 + (NSString *)localizedLabel:(NSString *)label;
+- (void)registerAddrsFor:(Contact *)contact;
 
 @end

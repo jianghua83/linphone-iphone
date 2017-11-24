@@ -8,7 +8,6 @@
 
 #import "DetailTableView.h"
 #import "MasterView.h"
-#import "LogsView.h"
 #include "linphone/liblinphone_tester.h"
 #import "Log.h"
 
@@ -67,9 +66,11 @@ static NSString *const kAllTestsName = @"Run All tests";
 
 	for (int i = 0; i < count; i++) {
 		const char *test_name = bc_tester_test_name([suite UTF8String], i);
-		NSString *testName = [NSString stringWithUTF8String:test_name];
-		TestItem *item = [[TestItem alloc] initWithName:testName fromSuite:suite];
-		[_tests addObject:item];
+		if (test_name) {
+			NSString *testName = [NSString stringWithUTF8String:test_name];
+			TestItem *item = [[TestItem alloc] initWithName:testName fromSuite:suite];
+			[_tests addObject:item];
+		}
 	}
 }
 
@@ -79,16 +80,22 @@ static NSString *const kAllTestsName = @"Run All tests";
 		return;
 	}
 
-	[_tests
-		addObject:[TestItem testWithName:kAllTestsName fromSuite:self.detailItem]]; // suite name not used for this one
-
 	if ([self.detailItem isEqualToString:@"All"]) {
+		// dont sort tests if we use all suites at once
 		for (int i = 0; i < bc_tester_nb_suites(); i++) {
-			[self addTestsFromSuite:[NSString stringWithUTF8String:bc_tester_suite_name(i)]];
+			const char *suite = bc_tester_suite_name(i);
+			if (suite) {
+				[self addTestsFromSuite:[NSString stringWithUTF8String:suite]];
+			}
 		}
 	} else {
 		[self addTestsFromSuite:self.detailItem];
+		[_tests sortUsingComparator:^(TestItem *obj1, TestItem *obj2) {
+		  return [obj1.name compare:obj2.name];
+		}];
 	}
+	// suite name not used for this one
+	[_tests insertObject:[TestItem testWithName:kAllTestsName fromSuite:self.detailItem] atIndex:0];
 }
 
 - (void)viewDidLoad {
@@ -195,7 +202,12 @@ static NSString *const kAllTestsName = @"Run All tests";
 		  if ([test.name isEqualToString:kAllTestsName]) {
 			  testName = nil;
 		  }
-		  BOOL fail = bc_tester_run_tests([testSuite UTF8String], [testName UTF8String], NULL);
+		  BOOL fail = NO;
+		  @try {
+			  fail = bc_tester_run_tests([testSuite UTF8String], [testName UTF8String], NULL);
+		  } @catch (NSException *e) {
+			  fail = YES;
+		  }
 		  if (fail) {
 			  LOGW(@"Test Failed!");
 			  test.state = TestStateFailed;

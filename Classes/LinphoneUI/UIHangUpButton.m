@@ -94,13 +94,14 @@
 	if (linphone_core_is_in_conference(LC) ||										   // In conference
 		(linphone_core_get_conference_size(LC) > 0 && [UIHangUpButton callCount] == 0) // Only one conf
 		) {
+		LinphoneManager.instance.conf = TRUE;
 		linphone_core_terminate_conference(LC);
-	} else if (currentcall != NULL) { // In a call
-		linphone_core_terminate_call(LC, currentcall);
+	} else if (currentcall != NULL) {
+		linphone_call_terminate(currentcall);
 	} else {
 		const MSList *calls = linphone_core_get_calls(LC);
-		if (ms_list_size(calls) == 1) { // Only one call
-			linphone_core_terminate_call(LC, (LinphoneCall *)(calls->data));
+		if (bctbx_list_size(calls) == 1) { // Only one call
+			linphone_call_terminate((LinphoneCall *)(calls->data));
 		}
 	}
 }

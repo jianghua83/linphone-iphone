@@ -26,11 +26,11 @@
 #import "ImagePickerView.h"
 
 @interface ContactDetailsView : TPMultiLayoutViewController <UICompositeViewDelegate, ImagePickerDelegate> {
-	ABAddressBookRef addressBook;
 	BOOL inhibUpdate;
 }
 
-@property(nonatomic, assign, setter=setContact:) ABRecordRef contact;
+@property(nonatomic, assign, setter=setContact:) Contact *contact;
+@property(nonatomic) Contact *tmpContact;
 @property(nonatomic, strong) IBOutlet ContactDetailsTableView *tableController;
 @property(nonatomic, strong) IBOutlet UIToggleButton *editButton;
 @property(nonatomic, strong) IBOutlet UIButton *backButton;
@@ -38,8 +38,9 @@
 @property(weak, nonatomic) IBOutlet UIRoundedImageView *avatarImage;
 @property(weak, nonatomic) IBOutlet UILabel *nameLabel;
 @property(weak, nonatomic) IBOutlet UIToggleButton *deleteButton;
-@property(weak, nonatomic) IBOutlet UIView *contentView;
+@property(weak, nonatomic) IBOutlet UIScrollView *contentView;
 @property(weak, nonatomic) IBOutlet UILabel *emptyLabel;
+@property BOOL isAdding;
 
 - (IBAction)onBackClick:(id)event;
 - (IBAction)onCancelClick:(id)event;
@@ -49,7 +50,7 @@
 
 - (void)newContact;
 - (void)newContact:(NSString *)address;
-- (void)editContact:(ABRecordRef)contact;
-- (void)editContact:(ABRecordRef)contact address:(NSString *)address;
-- (void)setContact:(ABRecordRef)contact;
+- (void)editContact:(Contact *)contact;
+- (void)editContact:(Contact *)contact address:(NSString *)address;
+- (void)setContact:(Contact *)contact;
 @end

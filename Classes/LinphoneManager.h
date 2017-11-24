@@ -18,7 +18,6 @@
  */
 
 #import <Foundation/Foundation.h>
-#import <AVFoundation/AVAudioSession.h>
 #import <SystemConfiguration/SCNetworkReachability.h>
 #import <AudioToolbox/AudioToolbox.h>
 #import <AssetsLibrary/ALAssetsLibrary.h>
@@ -33,6 +32,9 @@
 #import "InAppProductsManager.h"
 
 #include "linphone/linphonecore.h"
+#include "bctoolbox/list.h"
+#import "OrderedDictionary.h"
+#import "ProviderDelegate.h"
 
 extern NSString *const LINPHONERC_APPLICATION_KEY;
 
@@ -50,6 +52,7 @@ extern NSString *const kLinphoneBluetoothAvailabilityUpdate;
 extern NSString *const kLinphoneConfiguringStateUpdate;
 extern NSString *const kLinphoneGlobalStateUpdate;
 extern NSString *const kLinphoneNotifyReceived;
+extern NSString *const kLinphoneNotifyPresenceReceivedForUriOrTel;
 extern NSString *const kLinphoneCallEncryptionChanged;
 extern NSString *const kLinphoneFileTransferSendUpdate;
 extern NSString *const kLinphoneFileTransferRecvUpdate;
@@ -106,6 +109,8 @@ typedef struct _LinphoneManagerSounds {
 	Connectivity connectivity;
 	UIBackgroundTaskIdentifier pausedCallBgTask;
 	UIBackgroundTaskIdentifier incallBgTask;
+	UIBackgroundTaskIdentifier pushBgTaskCall;
+	UIBackgroundTaskIdentifier pushBgTaskMsg;
 	CTCallCenter* mCallCenter;
     NSDate *mLastKeepAliveDate;
 @public
@@ -135,8 +140,10 @@ typedef struct _LinphoneManagerSounds {
 - (void)configurePushTokenForProxyConfig: (LinphoneProxyConfig*)cfg;
 - (BOOL)popPushCallID:(NSString*) callId;
 - (void)acceptCallForCallId:(NSString*)callid;
+- (LinphoneCall *)callByCallId:(NSString *)call_id;
 - (void)cancelLocalNotifTimerForCallId:(NSString*)callid;
-
+- (void)alertLIME:(LinphoneChatRoom *)room;
+- (void)startPushLongRunningTask:(BOOL)msg callId:(NSString *)callId;
 + (BOOL)langageDirectionIsRTL;
 + (void)kickOffNetworkConnection;
 - (void)setupNetworkReachabilityCallback;
@@ -153,7 +160,9 @@ typedef struct _LinphoneManagerSounds {
 + (NSString*)cacheDirectory;
 
 - (void)acceptCall:(LinphoneCall *)call evenWithVideo:(BOOL)video;
-- (BOOL)call:(const LinphoneAddress *)address;
+- (void)send:(NSString *)replyText to:(NSString *)to;
+- (void)call:(const LinphoneAddress *)address;
+- (BOOL)doCall:(const LinphoneAddress *)iaddr;
 
 +(id)getMessageAppDataForKey:(NSString*)key inMessage:(LinphoneChatMessage*)msg;
 +(void)setValueInMessageAppData:(id)value forKey:(NSString*)key inMessage:(LinphoneChatMessage*)msg;
@@ -185,6 +194,18 @@ typedef struct _LinphoneManagerSounds {
 
 + (BOOL)isMyself:(const LinphoneAddress *)addr;
 
+- (void)shouldPresentLinkPopup;
+
+- (void)setProviderDelegate:(ProviderDelegate *)del;
+
+- (void) setLinphoneManagerAddressBookMap:(OrderedDictionary*) addressBook;
+- (OrderedDictionary*) getLinphoneManagerAddressBookMap;
+
+- (void) setContactsUpdated:(BOOL) updated;
+- (BOOL) getContactsUpdated;
+
+@property ProviderDelegate *providerDelegate;
+
 @property (readonly) BOOL isTesting;
 @property(readonly, strong) FastAddressBook *fastAddressBook;
 @property Connectivity connectivity;
@@ -196,6 +217,7 @@ typedef struct _LinphoneManagerSounds {
 @property(nonatomic, strong) NSData *pushNotificationToken;
 @property (readonly) LinphoneManagerSounds sounds;
 @property (readonly) NSMutableArray *logs;
+@property (nonatomic, assign) BOOL speakerBeforePause;
 @property (nonatomic, assign) BOOL speakerEnabled;
 @property (nonatomic, assign) BOOL bluetoothAvailable;
 @property (nonatomic, assign) BOOL bluetoothEnabled;
@@ -208,5 +230,9 @@ typedef struct _LinphoneManagerSounds {
 @property(readonly) InAppProductsManager *iapManager;
 @property(strong, nonatomic) NSMutableArray *fileTransferDelegates;
 @property BOOL nextCallIsTransfer;
+@property BOOL conf;
+@property NSDictionary *pushDict;
+@property(strong, nonatomic) OrderedDictionary *linphoneManagerAddressBookMap;
+@property (nonatomic, assign) BOOL contactsUpdated;
 
 @end

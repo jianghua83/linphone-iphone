@@ -27,11 +27,10 @@
 @interface ContactsListTableView : UICheckBoxTableView {
   @private
 	OrderedDictionary *addressBookMap;
-	NSMutableDictionary *avatarMap;
-
-	ABAddressBookRef addressBook;
 }
-
+@property(nonatomic) BOOL ongoing;
 - (void)loadData;
+- (void)loadSearchedData;
+- (void)removeAllContacts;
 
 @end

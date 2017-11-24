@@ -62,8 +62,12 @@
     else {
         CAAnimationDelegate *delegate = [[CAAnimationDelegate alloc] init];
         delegate.completion = completion;
-        self.delegate = delegate;
-    }
+#if __IPHONE_OS_VERSION_MAX_ALLOWED < __IPHONE_10_0
+		self.delegate = delegate;
+#else
+		self.delegate = (id)delegate;
+#endif
+	}
 }
 
 - (void (^)(BOOL))completion
@@ -79,8 +83,12 @@
     else {
         CAAnimationDelegate *delegate = [[CAAnimationDelegate alloc] init];
         delegate.start = start;
-        self.delegate = delegate;
-    }
+#if __IPHONE_OS_VERSION_MAX_ALLOWED < __IPHONE_10_0
+		self.delegate = delegate;
+#else
+		self.delegate = (id)delegate;
+#endif
+	}
 }
 
 - (void (^)(void))start

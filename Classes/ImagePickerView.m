@@ -43,6 +43,20 @@
 	return self;
 }
 
+- (BOOL) shouldAutorotate{
+	return NO;
+}
+
+#if __IPHONE_OS_VERSION_MAX_ALLOWED < 90000
+- (NSUInteger)supportedInterfaceOrientations {
+	return UIInterfaceOrientationMaskPortrait;
+}
+#else
+- (UIInterfaceOrientationMask)supportedInterfaceOrientations{
+	return UIInterfaceOrientationMaskPortrait;
+}
+#endif
+
 #pragma mark - UICompositeViewDelegate Functions
 
 static UICompositeViewDescription *compositeDescription = nil;
@@ -91,6 +105,12 @@ static UICompositeViewDescription *compositeDescription = nil;
 	[[UIApplication sharedApplication] setStatusBarHidden:NO]; // Fix UIImagePickerController status bar hide
 	[[UIApplication sharedApplication]
 		setStatusBarStyle:UIStatusBarStyleDefault]; // Fix UIImagePickerController status bar style change
+
+	[PhoneMainView.instance hideStatusBar:YES];
+	
+	//Prevent rotation of camera
+	NSNumber *value = [NSNumber numberWithInt:UIInterfaceOrientationPortrait];
+	[[UIDevice currentDevice] setValue:value forKey:@"orientation"];
 }
 
 - (void)viewWillDisappear:(BOOL)animated {
@@ -98,6 +118,8 @@ static UICompositeViewDescription *compositeDescription = nil;
 	if (popoverController != nil) {
 		[popoverController dismissPopoverAnimated:NO];
 	}
+
+	[PhoneMainView.instance hideStatusBar:NO];
 }
 
 #pragma mark - Property Functions
@@ -172,9 +194,6 @@ static UICompositeViewDescription *compositeDescription = nil;
 					   inView:(UIView *)ipadView {
 	void (^block)(UIImagePickerControllerSourceType) = ^(UIImagePickerControllerSourceType type) {
 	  ImagePickerView *view = VIEW(ImagePickerView);
-	  if (!(IPAD && ipadView && ipadPopoverView)) {
-		  [PhoneMainView.instance changeCurrentView:view.compositeViewDescription];
-	  }
 	  view.sourceType = type;
 
 	  // Displays a control that allows the user to choose picture or
@@ -198,6 +217,8 @@ static UICompositeViewDescription *compositeDescription = nil;
 												  inView:ipadView
 								permittedArrowDirections:UIPopoverArrowDirectionAny
 												animated:FALSE];
+	  } else {
+		  [PhoneMainView.instance changeCurrentView:view.compositeViewDescription];
 	  }
 	};
 

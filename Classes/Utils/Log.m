@@ -18,6 +18,8 @@
  */
 
 #import "Log.h"
+#import <asl.h>
+#import <os/log.h>
 
 @implementation Log
 
@@ -31,10 +33,12 @@
 	NSError *error;
 	// cache directory must be created if not existing
 	if (![[NSFileManager defaultManager] fileExistsAtPath:cachePath isDirectory:&isDir] && isDir == NO) {
-		[[NSFileManager defaultManager] createDirectoryAtPath:cachePath
-								  withIntermediateDirectories:NO
-												   attributes:nil
-														error:&error];
+		if (![[NSFileManager defaultManager] createDirectoryAtPath:cachePath
+									   withIntermediateDirectories:NO
+														attributes:nil
+															 error:&error]) {
+			LOGE(@"Could not create cache directory: %@", error);
+		}
 	}
 	return cachePath;
 }
@@ -51,8 +55,13 @@
 
 + (void)enableLogs:(OrtpLogLevel)level {
 	BOOL enabled = (level >= ORTP_DEBUG && level < ORTP_ERROR);
+	static BOOL stderrInUse = NO;
+	if (!stderrInUse) {
+		asl_add_log_file(NULL, STDERR_FILENO);
+		stderrInUse = YES;
+	}
 	linphone_core_set_log_collection_path([self cacheDirectory].UTF8String);
-	linphone_core_enable_logs_with_cb(linphone_iphone_log_handler);
+	linphone_core_set_log_handler(linphone_iphone_log_handler);
 	linphone_core_enable_log_collection(enabled);
 	if (level == 0) {
 		linphone_core_set_log_level(ORTP_FATAL);
@@ -70,34 +79,47 @@
 void linphone_iphone_log_handler(const char *domain, OrtpLogLevel lev, const char *fmt, va_list args) {
 	NSString *format = [[NSString alloc] initWithUTF8String:fmt];
 	NSString *formatedString = [[NSString alloc] initWithFormat:format arguments:args];
-	NSString *lvl = @"";
+	NSString *lvl;
+
+	if (!domain)
+		domain = "lib";
+	// since \r are interpreted like \n, avoid double new lines when logging network packets (belle-sip)
+	// output format is like: I/ios/some logs. We truncate domain to **exactly** DOMAIN_SIZE characters to have
+	// fixed-length aligned logs
 	switch (lev) {
 		case ORTP_FATAL:
-			lvl = @"F";
+			lvl = @"Fatal";
 			break;
 		case ORTP_ERROR:
-			lvl = @"E";
+			lvl = @"Error";
 			break;
 		case ORTP_WARNING:
-			lvl = @"W";
+			lvl = @"Warning";
 			break;
 		case ORTP_MESSAGE:
-			lvl = @"I";
+			lvl = @"Message";
 			break;
 		case ORTP_DEBUG:
+			lvl = @"Debug";
+			break;
 		case ORTP_TRACE:
-			lvl = @"D";
+			lvl = @"Trace";
 			break;
 		case ORTP_LOGLEV_END:
 			return;
 	}
-	if (!domain)
-		domain = "liblinphone";
-	// since \r are interpreted like \n, avoid double new lines when logging network packets (belle-sip)
-	// output format is like: I/ios/some logs. We truncate domain to **exactly** DOMAIN_SIZE characters to have
-	// fixed-length aligned logs
-	NSLog(@"%@/%*.*s/%@", lvl, DOMAIN_SIZE, DOMAIN_SIZE, domain,
-		  [formatedString stringByReplacingOccurrencesOfString:@"\r\n" withString:@"\n"]);
+	if ([formatedString containsString:@"\n"]) {
+		NSArray *myWords = [[formatedString stringByReplacingOccurrencesOfString:@"\r\n" withString:@"\n"]
+			componentsSeparatedByString:@"\n"];
+		for (int i = 0; i < myWords.count; i++) {
+			NSString *tab = i > 0 ? @"\t" : @"";
+			if (((NSString *)myWords[i]).length > 0) {
+				NSLog(@"[%@] %@%@", lvl, tab, (NSString *)myWords[i]);
+			}
+		}
+	} else {
+		NSLog(@"[%@] %@", lvl, [formatedString stringByReplacingOccurrencesOfString:@"\r\n" withString:@"\n"]);
+	}
 }
 
 @end

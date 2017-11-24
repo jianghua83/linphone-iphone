@@ -59,6 +59,11 @@
 											 object:nil];
 
 	[NSNotificationCenter.defaultCenter addObserver:self
+										   selector:@selector(loadData)
+											   name:kLinphoneCallUpdate
+											 object:nil];
+
+	[NSNotificationCenter.defaultCenter addObserver:self
 										   selector:@selector(coreUpdateEvent:)
 											   name:kLinphoneCoreUpdate
 											 object:nil];
@@ -69,15 +74,25 @@
 	[super viewWillDisappear:animated];
 
 	[NSNotificationCenter.defaultCenter removeObserver:self name:kLinphoneAddressBookUpdate object:nil];
-
 	[NSNotificationCenter.defaultCenter removeObserver:self name:kLinphoneCoreUpdate object:nil];
+	[NSNotificationCenter.defaultCenter removeObserver:self name:kLinphoneCallUpdate object:nil];
 }
 
 #pragma mark - Event Functions
 
 - (void)coreUpdateEvent:(NSNotification *)notif {
-	// Invalid all pointers
-	[self loadData];
+	@try {
+		// Invalid all pointers
+		[self loadData];
+	}
+	@catch (NSException *exception) {
+		if ([exception.name isEqualToString:@"LinphoneCoreException"]) {
+			LOGE(@"Core already destroyed");
+			return;
+		}
+		LOGE(@"Uncaught exception : %@", exception.description);
+		abort();
+	}
 }
 
 #pragma mark - Property Functions
@@ -110,7 +125,7 @@
 		}
 	}
 
-	const MSList *logs = linphone_core_get_call_logs(LC);
+	const bctbx_list_t *logs = linphone_core_get_call_logs(LC);
 	self.sections = [NSMutableDictionary dictionary];
 	while (logs != NULL) {
 		LinphoneCallLog *log = (LinphoneCallLog *)logs->data;
@@ -130,14 +145,14 @@
 			LinphoneCallLog *prev = [eventsOnThisDay lastObject] ? [[eventsOnThisDay lastObject] pointerValue] : NULL;
 			if (prev && linphone_address_weak_equal(linphone_call_log_get_remote_address(prev),
 													linphone_call_log_get_remote_address(log))) {
-				MSList *list = linphone_call_log_get_user_data(prev);
-				list = ms_list_append(list, log);
+				bctbx_list_t *list = linphone_call_log_get_user_data(prev);
+				list = bctbx_list_append(list, log);
 				linphone_call_log_set_user_data(prev, list);
 			} else {
 				[eventsOnThisDay addObject:[NSValue valueWithPointer:linphone_call_log_ref(log)]];
 			}
 		}
-		logs = ms_list_next(logs);
+		logs = bctbx_list_next(logs);
 	}
 
 	[self computeSections];
@@ -216,7 +231,7 @@
 	if (![self isEditing]) {
 		id log = [_sections objectForKey:_sortedDays[indexPath.section]][indexPath.row];
 		LinphoneCallLog *callLog = [log pointerValue];
-		if (callLog != NULL && linphone_call_log_get_call_id(callLog) != NULL) {
+		if (callLog != NULL) {
 			if (IPAD) {
 				UIHistoryCell *cell = (UIHistoryCell *)[self tableView:tableView cellForRowAtIndexPath:indexPath];
 				[cell onDetails:self];

@@ -68,6 +68,10 @@
 	}
 }
 
++ (NSString*)afinetToString:(int)remote_family {
+	return (remote_family == LinphoneAddressFamilyUnspec) ? @"Unspecified":(remote_family == LinphoneAddressFamilyInet) ? @"IPv4" : @"IPv6";
+}
+
 + (NSString *)mediaEncryptionToString:(LinphoneMediaEncryption)enc {
 	switch (enc) {
 		case LinphoneMediaEncryptionDTLS:
@@ -121,18 +125,44 @@
 		[result appendString:[NSString stringWithFormat:@"/%i channels", payload->channels]];
 	}
 	[result appendString:@"\n"];
+	// Encoder & decoder descriptions
+	const char *enc_desc = ms_factory_get_encoder(linphone_core_get_ms_factory(LC), payload->mime_type)->text;
+	const char *dec_desc = ms_factory_get_decoder(linphone_core_get_ms_factory(LC), payload->mime_type)->text;
+	if (strcmp(enc_desc, dec_desc) == 0) {
+		[result appendString:[NSString stringWithFormat:@"Encoder/Decoder: %s", enc_desc]];
+		[result appendString:@"\n"];
+	} else {
+		[result appendString:[NSString stringWithFormat:@"Encoder: %s", enc_desc]];
+		[result appendString:@"\n"];
+		[result appendString:[NSString stringWithFormat:@"Decoder: %s", dec_desc]];
+		[result appendString:@"\n"];
+	}
 
 	if (stats != NULL) {
+		[result appendString:[NSString stringWithFormat:@"Download bandwidth: %1.1f kbits/s",
+														linphone_call_stats_get_download_bandwidth(stats)]];
+		[result appendString:@"\n"];
+		[result appendString:[NSString stringWithFormat:@"Upload bandwidth: %1.1f kbits/s",
+														linphone_call_stats_get_upload_bandwidth(stats)]];
+		[result appendString:@"\n"];
+        if (stream == LinphoneStreamTypeVideo) {
+            [result appendString:[NSString stringWithFormat:@"Estimated download bandwidth: %1.1f kbits/s",
+                                  linphone_call_stats_get_estimated_download_bandwidth(stats)]];
+            [result appendString:@"\n"];
+        }
 		[result
-			appendString:[NSString stringWithFormat:@"Download bandwidth: %1.1f kbits/s", stats->download_bandwidth]];
+			appendString:[NSString stringWithFormat:@"ICE state: %@",
+													[self.class iceToString:linphone_call_stats_get_ice_state(stats)]]];
 		[result appendString:@"\n"];
-		[result appendString:[NSString stringWithFormat:@"Upload bandwidth: %1.1f kbits/s", stats->upload_bandwidth]];
-		[result appendString:@"\n"];
-		[result appendString:[NSString stringWithFormat:@"ICE state: %@", [self.class iceToString:stats->ice_state]]];
+		[result
+			appendString:[NSString
+							 stringWithFormat:@"Afinet: %@",
+											  [self.class afinetToString:linphone_call_stats_get_ip_family_of_remote(
+																			 stats)]]];
 		[result appendString:@"\n"];
 
 		// RTP stats section (packet loss count, etc)
-		rtp_stats_t rtp_stats = linphone_call_stats_get_rtp_stats(stats);
+		const rtp_stats_t rtp_stats = *linphone_call_stats_get_rtp_stats(stats);
 		[result
 			appendString:[NSString stringWithFormat:
 									   @"RTP packets: %llu total, %lld cum loss, %llu discarded, %llu OOT, %llu bad",

@@ -31,6 +31,10 @@
 - (void)beforeAll {
 	[super beforeAll];
 
+	// turn off logs since jenkins fails to parse output otherwise. If
+	// you want to debug a specific test, comment this temporary
+	[Log enableLogs:ORTP_WARNING];
+
 #if TARGET_IPHONE_SIMULATOR
 	while ([tester acknowledgeSystemAlert]) {
 		[tester waitForTimeInterval:.5f];
@@ -69,6 +73,10 @@
 
 - (NSString *)accountDomain {
 	return @"test.linphone.org";
+}
+
+- (NSString *)accountProxyRoute {
+	return [[self accountDomain] stringByAppendingString:@";transport=tcp"];
 }
 
 - (NSString *)getUUID {
@@ -119,13 +127,11 @@
 		linphone_address_set_header(testAddr, "X-Create-Account", "yes");
 		linphone_address_set_transport(testAddr, LinphoneTransportTcp);
 		linphone_address_set_port(testAddr, 0);
-
-		LinphoneProxyConfig *testProxy = linphone_proxy_config_new();
+		LinphoneProxyConfig *testProxy = linphone_core_create_proxy_config(lc);
 		linphone_proxy_config_set_identity_address(testProxy, testAddr);
-		char *server_addr = ms_strdup_printf("%s;transport=tcp", linphone_address_get_domain(testAddr));
-		linphone_proxy_config_set_server_addr(testProxy, server_addr);
-		linphone_proxy_config_set_route(testProxy, server_addr);
-		ms_free(server_addr);
+		linphone_proxy_config_set_server_addr(testProxy, [self accountProxyRoute].UTF8String);
+		linphone_proxy_config_set_route(testProxy, [self accountProxyRoute].UTF8String);
+		linphone_proxy_config_set_ref_key(testProxy, "push_notification");
 
 		LinphoneAuthInfo *testAuth = linphone_auth_info_new(linphone_address_get_username(testAddr), NULL,
 															linphone_address_get_username(testAddr), NULL, NULL,
@@ -138,17 +144,20 @@
 		[[LinphoneManager instance] configurePushTokenForProxyConfig:testProxy];
 
 		linphone_proxy_config_unref(testProxy);
-		linphone_auth_info_destroy(testAuth);
-		linphone_address_destroy(testAddr);
+		linphone_auth_info_unref(testAuth);
+		linphone_address_unref(testAddr);
 
 		linphone_core_set_file_transfer_server(lc, "https://www.linphone.org:444/lft.php");
 
 		// reload address book to prepend proxy config domain to contacts' phone number
-		[[[LinphoneManager instance] fastAddressBook] reload];
+                [[[LinphoneManager instance] fastAddressBook]
+                    reloadAllContacts];
 
-		[self waitForRegistration];
-		[[LinphoneManager instance] lpConfigSetInt:NO forKey:@"animations_preference"];
-	}
+                [self waitForRegistration];
+                [[LinphoneManager instance]
+                    lpConfigSetInt:NO
+                            forKey:@"animations_preference"];
+        }
 }
 
 - (UITableView *)findTableView:(NSString *)table {

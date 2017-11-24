@@ -30,7 +30,7 @@
 + (void)buttonFixStates:(UIButton*)button;
 + (void)buttonMultiViewAddAttributes:(NSMutableDictionary*)attributes button:(UIButton*)button;
 + (void)buttonMultiViewApplyAttributes:(NSDictionary*)attributes button:(UIButton*)button;
-+ (NSString *)deviceName;
++ (NSString *)deviceModelIdentifier;
 
 + (LinphoneAddress *)normalizeSipOrPhoneAddress:(NSString *)addr;
 
@@ -71,7 +71,7 @@ typedef enum {
 @end
 
 @interface ContactDisplay : NSObject
-+ (void)setDisplayNameLabel:(UILabel *)label forContact:(ABRecordRef)contact;
++ (void)setDisplayNameLabel:(UILabel *)label forContact:(Contact *)contact;
 + (void)setDisplayNameLabel:(UILabel *)label forAddress:(const LinphoneAddress *)addr;
 @end
 

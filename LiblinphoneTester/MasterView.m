@@ -7,17 +7,17 @@
 //
 
 #import "MasterView.h"
-#import "LogsView.h"
 #import "DetailTableView.h"
 
+#import "Log.h"
+#include "TargetConditionals.h"
 #include "linphone/liblinphone_tester.h"
 #include "mediastreamer2/msutils.h"
-#import "Log.h"
 
 @interface MasterView () {
 	NSMutableArray *_objects;
 	NSString *bundlePath;
-	NSString *documentPath;
+	NSString *writablePath;
 }
 @end
 
@@ -31,21 +31,13 @@
 	[super awakeFromNib];
 }
 
-NSMutableArray *lastLogs = nil;
-NSMutableArray *logsBuffer = nil;
-static int const kLastLogsCapacity = 5000;
-static int const kLogsBufferCapacity = 10;
-NSString *const kLogsUpdateNotification = @"kLogsUpdateNotification";
-
 - (void)setupLogging {
-	lastLogs = [[NSMutableArray alloc] initWithCapacity:kLastLogsCapacity];
-	logsBuffer = [NSMutableArray arrayWithCapacity:kLogsBufferCapacity];
 	[Log enableLogs:ORTP_DEBUG];
-	linphone_core_enable_log_collection(NO);
+	linphone_core_enable_log_collection(YES);
 }
 
 void tester_logs_handler(int level, const char *fmt, va_list args) {
-	linphone_iphone_log_handler(NULL, level, fmt, args);
+	linphone_iphone_log_handler("Tester", level, fmt, args);
 }
 
 - (void)viewDidLoad {
@@ -54,28 +46,46 @@ void tester_logs_handler(int level, const char *fmt, va_list args) {
 	self.detailViewController =
 		(DetailTableView *)[[self.splitViewController.viewControllers lastObject] topViewController];
 
-	[self setupLogging];
+	//[self setupLogging];
+	liblinphone_tester_keep_accounts(TRUE);
 
 	bundlePath = [[NSBundle mainBundle] bundlePath];
-	NSArray *paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
-	documentPath = [paths objectAtIndex:0];
-
-	bc_tester_init(tester_logs_handler, ORTP_MESSAGE, ORTP_ERROR, "rcfiles");
-	liblinphone_tester_add_suites();
+	NSArray *paths = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES);
+	writablePath = [paths objectAtIndex:0];
+	liblinphone_tester_init(NULL);
+	// bc_tester_init(tester_logs_handler, ORTP_MESSAGE, ORTP_ERROR, "rcfiles");
+	// liblinphone_tester_add_suites();
+	linphone_core_set_log_level_mask((OrtpLogLevel)(ORTP_MESSAGE | ORTP_WARNING | ORTP_ERROR | ORTP_FATAL));
 
 	bc_tester_set_resource_dir_prefix([bundlePath UTF8String]);
-	bc_tester_set_writable_dir_prefix([documentPath UTF8String]);
+	bc_tester_set_writable_dir_prefix([writablePath UTF8String]);
 
 	LOGI(@"Bundle path: %@", bundlePath);
-	LOGI(@"Document path: %@", documentPath);
+	LOGI(@"Writable path: %@", writablePath);
+
+#if (TARGET_OS_SIMULATOR)
+	char *xmlFile = bc_tester_file("LibLinphoneIOS.xml");
+	char *args[] = {"--xml-file", xmlFile};
+	bc_tester_parse_args(2, args, 0);
+
+	char *logFile = bc_tester_file("LibLinphoneIOS.txt");
+	liblinphone_tester_set_log_file(logFile);
+#endif
+
+	liblinphonetester_ipv6 = true;
 
 	int count = bc_tester_nb_suites();
 	_objects = [[NSMutableArray alloc] initWithCapacity:count + 1];
-	[_objects addObject:@"All"];
 	for (int i = 0; i < count; i++) {
 		const char *suite = bc_tester_suite_name(i);
 		[_objects addObject:[NSString stringWithUTF8String:suite]];
 	}
+	[_objects sortUsingSelector:@selector(localizedCaseInsensitiveCompare:)];
+	[_objects insertObject:@"All" atIndex:0];
+}
+
+- (void)dealloc {
+	liblinphone_tester_clear_accounts();
 }
 
 - (void)displayLogs {

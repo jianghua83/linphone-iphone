@@ -41,7 +41,7 @@
 #pragma mark -
 
 - (void)clearMessageList {
-	messageList = ms_list_free_with_data(messageList, (void (*)(void *))linphone_chat_message_unref);
+	messageList = bctbx_list_free_with_data(messageList, (void (*)(void *))linphone_chat_message_unref);
 }
 
 - (void)updateData {
@@ -57,7 +57,7 @@
 		const LinphoneAddress *peer = linphone_chat_room_get_peer_address(_chatRoom);
 		if (linphone_address_equal(ftd_peer, peer) && linphone_chat_message_is_outgoing(ftd.message)) {
 			LOGI(@"Appending transient upload message %p", ftd.message);
-			messageList = ms_list_append(messageList, linphone_chat_message_ref(ftd.message));
+			messageList = bctbx_list_append(messageList, linphone_chat_message_ref(ftd.message));
 		}
 	}
 }
@@ -73,13 +73,13 @@
 	// mode, "message received" notification will reload tabledata, retrieving all history
 	// and THEN addChatEntry will be called, requesting the newest message to be added again
 	if (messageList &&
-		(linphone_chat_message_get_storage_id(chat) ==
-		 linphone_chat_message_get_storage_id(ms_list_nth_data(messageList, ms_list_size(messageList) - 1)))) {
+		(linphone_chat_message_get_storage_id(chat) == linphone_chat_message_get_storage_id(bctbx_list_nth_data(
+														   messageList, (int)bctbx_list_size(messageList) - 1)))) {
 		return;
 	}
 
-	messageList = ms_list_append(messageList, linphone_chat_message_ref(chat));
-	int pos = ms_list_size(messageList) - 1;
+	messageList = bctbx_list_append(messageList, linphone_chat_message_ref(chat));
+	int pos = (int)bctbx_list_size(messageList) - 1;
 
 	NSIndexPath *indexPath = [NSIndexPath indexPathForRow:pos inSection:0];
 	[self.tableView beginUpdates];
@@ -88,7 +88,7 @@
 }
 
 - (void)updateChatEntry:(LinphoneChatMessage *)chat {
-	NSInteger index = ms_list_index(messageList, chat);
+	NSInteger index = bctbx_list_index(messageList, chat);
 	if (index < 0) {
 		LOGW(@"chat entry doesn't exist");
 		return;
@@ -100,8 +100,9 @@
 
 - (void)scrollToBottom:(BOOL)animated {
 	[self.tableView reloadData];
-	int count = ms_list_size(messageList);
+	size_t count = bctbx_list_size(messageList);
 	if (count) {
+		[self.tableView cellForRowAtIndexPath:[NSIndexPath indexPathForRow:(count - 1) inSection:0]];
 		[self.tableView scrollToRowAtIndexPath:[NSIndexPath indexPathForRow:(count - 1) inSection:0]
 							  atScrollPosition:UITableViewScrollPositionBottom
 									  animated:YES];
@@ -112,22 +113,26 @@
 	if (messageList == nil || _chatRoom == nil) {
 		return;
 	}
-
 	int index = -1;
-	int count = ms_list_size(messageList);
+	size_t count = bctbx_list_size(messageList);
 	// Find first unread & set all entry read
 	for (int i = 0; i < count; ++i) {
-		int read = linphone_chat_message_is_read(ms_list_nth_data(messageList, i));
-		if (read == 0) {
-			if (index == -1)
+		int read = linphone_chat_message_is_read(bctbx_list_nth_data(messageList, i));
+		LinphoneChatMessageState state = linphone_chat_message_get_state(bctbx_list_nth_data(messageList, i));
+		if (read == 0 &&
+			!(state == LinphoneChatMessageStateFileTransferError || state == LinphoneChatMessageStateNotDelivered)) {
+			if (index == -1) {
 				index = i;
+				break;
+			}
 		}
 	}
-	if (index == -1) {
-		index = count - 1;
+	if (index == -1 && count > 0) {
+		index = (int)count - 1;
 	}
-
-	linphone_chat_room_mark_as_read(_chatRoom);
+	if ([UIApplication sharedApplication].applicationState == UIApplicationStateActive) {
+		linphone_chat_room_mark_as_read(_chatRoom);
+	}
 	TabBarView *tab = (TabBarView *)[PhoneMainView.instance.mainViewController
 		getCachedController:NSStringFromClass(TabBarView.class)];
 	[tab update:YES];
@@ -155,12 +160,12 @@
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-	return ms_list_size(messageList);
+	return bctbx_list_size(messageList);
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
 	NSString *kCellId = nil;
-	LinphoneChatMessage *chat = ms_list_nth_data(messageList, (int)[indexPath row]);
+	LinphoneChatMessage *chat = bctbx_list_nth_data(messageList, (int)[indexPath row]);
 	if (linphone_chat_message_get_file_transfer_information(chat) ||
 		linphone_chat_message_get_external_body_url(chat)) {
 		kCellId = NSStringFromClass(UIChatBubblePhotoCell.class);
@@ -188,7 +193,7 @@
 }
 
 - (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
-	LinphoneChatMessage *chat = ms_list_nth_data(messageList, (int)[indexPath row]);
+	LinphoneChatMessage *chat = bctbx_list_nth_data(messageList, (int)[indexPath row]);
 	return [UIChatBubbleTextCell ViewHeightForMessage:chat withWidth:self.view.frame.size.width].height;
 }
 
@@ -197,9 +202,9 @@
 	 forRowAtIndexPath:(NSIndexPath *)indexPath {
 	if (editingStyle == UITableViewCellEditingStyleDelete) {
 		[tableView beginUpdates];
-		LinphoneChatMessage *chat = ms_list_nth_data(messageList, (int)[indexPath row]);
+		LinphoneChatMessage *chat = bctbx_list_nth_data(messageList, (int)[indexPath row]);
 		linphone_chat_room_delete_message(_chatRoom, chat);
-		messageList = ms_list_remove(messageList, chat);
+		messageList = bctbx_list_remove(messageList, chat);
 
 		[tableView deleteRowsAtIndexPaths:[NSArray arrayWithObject:indexPath]
 						 withRowAnimation:UITableViewRowAnimationBottom];
@@ -209,9 +214,9 @@
 
 - (void)removeSelectionUsing:(void (^)(NSIndexPath *))remover {
 	[super removeSelectionUsing:^(NSIndexPath *indexPath) {
-	  LinphoneChatMessage *chat = ms_list_nth_data(messageList, (int)[indexPath row]);
+	  LinphoneChatMessage *chat = bctbx_list_nth_data(messageList, (int)[indexPath row]);
 	  linphone_chat_room_delete_message(_chatRoom, chat);
-	  messageList = ms_list_remove(messageList, chat);
+	  messageList = bctbx_list_remove(messageList, chat);
 	}];
 }
 

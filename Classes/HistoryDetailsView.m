@@ -60,6 +60,7 @@ static UICompositeViewDescription *compositeDescription = nil;
 	if (IPAD) {
 		_backButton.hidden = YES;
 		_backButton.alpha = 0;
+		
 	}
 
 	UITapGestureRecognizer *headerTapGesture =
@@ -81,6 +82,11 @@ static UICompositeViewDescription *compositeDescription = nil;
 										   selector:@selector(coreUpdateEvent:)
 											   name:kLinphoneCoreUpdate
 											 object:nil];
+	
+	[[NSNotificationCenter defaultCenter] addObserver: self
+											 selector: @selector(deviceOrientationDidChange:)
+												 name: UIDeviceOrientationDidChangeNotification
+											   object: nil];
 }
 
 - (void)viewWillDisappear:(BOOL)animated {
@@ -91,7 +97,23 @@ static UICompositeViewDescription *compositeDescription = nil;
 #pragma mark - Event Functions
 
 - (void)coreUpdateEvent:(NSNotification *)notif {
-	[self update];
+	@try {
+		[self update];
+	}
+	@catch (NSException *exception) {
+		if ([exception.name isEqualToString:@"LinphoneCoreException"]) {
+			LOGE(@"Core already destroyed");
+			return;
+		}
+		LOGE(@"Uncaught exception : %@", exception.description);
+		abort();
+	}
+}
+
+- (void) deviceOrientationDidChange:(NSNotification*) notif {
+	if (IPAD) {
+		[self update];
+	}
 }
 
 #pragma mark -
@@ -123,7 +145,7 @@ static UICompositeViewDescription *compositeDescription = nil;
 	LinphoneAddress *addr = linphone_call_log_get_remote_address(callLog);
 	_addContactButton.hidden = ([FastAddressBook getContactWithAddress:addr] != nil);
 	[ContactDisplay setDisplayNameLabel:_contactLabel forAddress:addr];
-	[_avatarImage setImage:[FastAddressBook imageForAddress:addr thumbnail:NO] bordered:NO withRoundedRadius:YES];
+	[_avatarImage setImage:[FastAddressBook imageForAddress:addr] bordered:NO withRoundedRadius:YES];
 	char *addrURI = linphone_address_as_string_uri_only(addr);
 	_addressLabel.text = [NSString stringWithUTF8String:addrURI];
 	ms_free(addrURI);
@@ -140,7 +162,7 @@ static UICompositeViewDescription *compositeDescription = nil;
 
 - (IBAction)onContactClick:(id)event {
 	LinphoneAddress *addr = linphone_call_log_get_remote_address(callLog);
-	ABRecordRef contact = [FastAddressBook getContactWithAddress:addr];
+	Contact *contact = [FastAddressBook getContactWithAddress:addr];
 	if (contact) {
 		ContactDetailsView *view = VIEW(ContactDetailsView);
 		[PhoneMainView.instance changeCurrentView:view.compositeViewDescription];

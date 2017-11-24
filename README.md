@@ -4,21 +4,6 @@ Linphone is a free VoIP and video softphone based on the SIP protocol.
 
 ![Dialer screenshot](http://www.linphone.org/img/slideshow-phone.png)
 
-# Getting started
-
-Here's how to launch Linphone for iPhone (more details below):
-
-1. Install [Xcode from AppStore](https://itunes.apple.com/us/app/Xcode/id497799835?mt=12#).
-2. Install [HomeBrew, a package manager for OS X](http://brew.sh) (MacPorts is supported but deprecated).
-3. Install Linphone dependencies: open iTerm.app in the current directory and list dependencies to install using:
- `./prepare.py`
-4. Reorder your path so that brew tools are used instead of Apple's ones which are obsolete:
- `export PATH=/usr/local/bin:$PATH`
-5. Build SDK (see below for options and explanations):
- `./prepare.py -c && ./prepare.py && make`
-6. Open linphone.xcodeproj in Xcode: `open linphone.xcodeproj`
-7. Press `⌘R` and voilà!
-
 # How can I contribute?
 
 Thanks for asking! We love pull requests from everyone. Depending on what you want to do, you can help us improve Linphone in
@@ -34,23 +19,63 @@ Interested in helping translate Linphone? Contribute [on Transifex](https://www.
 
 ## Report bugs and submit patchs
 
-If you want to dig through Linphone code or report a bug, please read CONTRIBUTING.md first. You should also read this README entirely ;-).
+If you want to dig through Linphone code or report a bug, please read `CONTRIBUTING.md` first. You should also read this `README` entirely ;-).
+ 
+## How to be a beta tester ?
+ 
+Enter the Beta :
+ - Download TestFlight from the App Store and log in it with your apple-id
+ - Send an email to linphone-iphone@belledonne-communications.com, with object : [Beta test - Request], where you precise your apple-id you logged in TestFlight with	
+ - You will receive an invitation code to the beta in the following days via your email associated to your apple-id
+ - Enter the invitation code received into TestFlight
+ - Download Linphone from TestFlight
+ - And voilà ! TestFlight will send you a notification every time a new beta test is available.
+ 
+Send a crash report :
+ - It is done automatically by TestFlight
+ 
+Report a bug :
+ - Open Linphone
+ - Go to Settings —> Advanced —> Send logs
+ - An email to linphone-iphone@belledonne-communications.com is created with your logs attached
+ - Fill in the bug description with :
+	* What you were doing
+	* What happened
+	* What you were expecting
+	* Approximately when the bug happened
+ - Change the object to [Beta test - Bug report]
+ - Send the mail
 
-# Building the SDK
+# Building and customizing the SDK
 
 Linphone for iPhone depends on liblinphone SDK. This SDK is generated from makefiles and shell scripts.
 
- To generate the liblinphone multi-arch SDK in GPL mode, simply invoke:
+ Steps to customize the liblinphone SDK options are:
+
+ 1. Install [HomeBrew, a package manager for OS X](http://brew.sh) (MacPorts is supported but deprecated).
+ 2. Install Linphone dependencies: open iTerm.app in the current directory and list dependencies to install using:
+ `./prepare.py`
+ 3. Reorder your path so that brew tools are used instead of Apple's ones which are obsolete:
+ `export PATH=/usr/local/bin:$PATH`
+ 4. Build SDK (see below for options and explanations):
+ `./prepare.py -c && ./prepare.py && make`
+
+ For instance to generate the liblinphone multi-arch SDK in GPL mode, simply invoke:
 
         ./prepare.py [options] && make
 
 **The resulting SDK is located in `liblinphone-sdk/` root directory.**
 
+## Incorporating our SDK in your project
+
+After the SDK has been built, add all the `.framework` files located in `liblinphone-sdk/apple-darwin/Frameworks` to your XCode project Embedded Frameworks.
+Add a Run Script step to your build steps, put it after your step to embed frameworks, set it to use our `deploy.sh` script located in `liblinphone-sdk/apple-darwin/Tools`.
+
 ## Licensing: GPL third parties versus non GPL third parties
 
 This SDK can be generated in 2 flavors:
 
-* GPL third parties enabled means that liblinphone includes GPL third parties like FFmpeg or X264. If you choose this flavor, your final application **must comply with GPL in any case**. This is the default mode.
+* GPL third parties enabled means that liblinphone includes GPL third parties like FFmpeg. If you choose this flavor, your final application **must comply with GPL in any case**. This is the default mode.
 
 * NO GPL third parties means that Linphone will only use non GPL code except for `liblinphone`, `mediastreamer2`, `oRTP` and `belle-sip`. If you choose this flavor, your final application is **still subject to GPL except if you have a [commercial license for the mentioned libraries](http://www.belledonne-communications.com/products.html)**.
  To generate the liblinphone multi arch SDK without GPL third parties, invoke:
@@ -63,7 +88,7 @@ You can enable non-free codecs by using `-DENABLE_NON_FREE_CODECS=ON` and `-DENA
 
         ./prepare.py --list-features
 
-You can for instance enable X264 by using:
+You can for instance enable X264 using:
 
         ./prepare.py -DENABLE_NON_FREE_CODECS=ON -DENABLE_X264=ON [other options]
 
@@ -114,7 +139,13 @@ Sometime it can be useful to step into liblinphone SDK functions. To allow Xcode
 ## Debugging mediastreamer2
 
 For iOS specific media development like audio video capture/playback it may be interesting to use `mediastream` test tool.
-The project `submodule/liblinphone.xcodeproj` can be used for this purpose.
+You can build it using the following:
+
+        ./prepare.py -G Xcode -g && make
+        # then open the project for a given architecture (here x86_64, to run on simulator):
+        open WORK/ios-x86_64/Build/linphone_builder/EP_linphone_builder.xcodeproj
+
+Then you can select mediastream target and launch it on device. You can configure scheme to pass custom parameters.
 
 # Quick UI reference
 
@@ -122,23 +153,23 @@ The project `submodule/liblinphone.xcodeproj` can be used for this purpose.
 - The delegate is set to LinphoneAppDelegate in main.m, in the UIApplicationMain() by passing its class
 - Basic layout:
 
-MainStoryboard
-        |
-        | (rootViewController)
-        |
-    PhoneMainView ---> view #--> app background
-        |                   |
-        |                   #--> statusbar background
-        |
-        | (mainViewController)
-        |
-    UICompositeView : TPMultilayout
+        MainStoryboard
                 |
-                #---> view  #--> statusBar
-                            |
-                            #--> contentView
-                            |
-                            #--> tabBar
+                | (rootViewController)
+                |
+            PhoneMainView ---> view |--> app background
+                |                   |
+                |                   |--> statusbar background
+                |
+                | (mainViewController)
+                |
+            UICompositeView : TPMultilayout
+                        |
+                        |---> view  |--> statusBar
+                                    |
+                                    |--> contentView
+                                    |
+                                    |--> tabBar
 
 
 When the application is started, the phoneMainView gets asked to transition to the Dialer view or the Assistant view.

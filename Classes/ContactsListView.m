@@ -106,15 +106,21 @@ static UICompositeViewDescription *compositeDescription = nil;
 - (void)viewDidLoad {
 	[super viewDidLoad];
 	tableController.tableView.accessibilityIdentifier = @"Contacts table";
-	[self changeView:ContactsLinphone];
-	if ([tableController totalNumberOfItems] == 0) {
+	[self changeView:ContactsAll];
+	/*if ([tableController totalNumberOfItems] == 0) {
 		[self changeView:ContactsAll];
-	}
+	 }*/
+	UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc]
+								   initWithTarget:self
+								   action:@selector(dismissKeyboards)];
+	
+	[tap setDelegate:self];
+	[self.view addGestureRecognizer:tap];
 }
 
 - (void)viewWillAppear:(BOOL)animated {
 	[super viewWillAppear:animated];
-
+	[ContactSelection setNameOrEmailFilter:@""];
 	_searchBar.showsCancelButton = (_searchBar.text.length > 0);
 
 	if (tableController.isEditing) {
@@ -126,17 +132,25 @@ static UICompositeViewDescription *compositeDescription = nil;
 - (void)viewDidAppear:(BOOL)animated {
 	[super viewDidAppear:animated];
 	if (![FastAddressBook isAuthorized]) {
-		UIAlertView *error = [[UIAlertView alloc]
-				initWithTitle:NSLocalizedString(@"Address book", nil)
-					  message:NSLocalizedString(@"You must authorize the application to have access to address book.\n"
-												 "Toggle the application in Settings > Privacy > Contacts",
-												nil)
-					 delegate:nil
-			cancelButtonTitle:NSLocalizedString(@"Continue", nil)
-			otherButtonTitles:nil];
-		[error show];
+		UIAlertController *errView = [UIAlertController alertControllerWithTitle:NSLocalizedString(@"Address book", nil)
+																		 message:NSLocalizedString(@"You must authorize the application to have access to address book.\n"
+																								   "Toggle the application in Settings > Privacy > Contacts",
+																								   nil)
+																  preferredStyle:UIAlertControllerStyleAlert];
+		
+		UIAlertAction* defaultAction = [UIAlertAction actionWithTitle:NSLocalizedString(@"Continue", nil)
+																style:UIAlertActionStyleDefault
+															  handler:^(UIAlertAction * action) {}];
+		
+		[errView addAction:defaultAction];
+		[self presentViewController:errView animated:YES completion:nil];
 		[PhoneMainView.instance popCurrentView];
 	}
+}
+
+- (void) viewWillDisappear:(BOOL)animated {
+	self.view = NULL;
+	[self.tableController removeAllContacts];
 }
 
 #pragma mark -
@@ -179,6 +193,7 @@ static UICompositeViewDescription *compositeDescription = nil;
 - (IBAction)onAddContactClick:(id)event {
 	ContactDetailsView *view = VIEW(ContactDetailsView);
 	[PhoneMainView.instance changeCurrentView:view.compositeViewDescription];
+	view.isAdding = TRUE;
 	if ([ContactSelection getAddAddress] == nil) {
 		[view newContact];
 	} else {
@@ -197,6 +212,7 @@ static UICompositeViewDescription *compositeDescription = nil;
 		onConfirmationClick:^() {
 		  [tableController removeSelectionUsing:nil];
 		  [tableController loadData];
+		  [self onEditionChangeClick:nil];
 		}];
 }
 
@@ -208,7 +224,14 @@ static UICompositeViewDescription *compositeDescription = nil;
 - (void)searchBarCancelButtonClicked:(UISearchBar *)searchBar {
 	searchBar.text = @"";
 	[self searchBar:searchBar textDidChange:@""];
+	[tableController loadData];
 	[searchBar resignFirstResponder];
+}
+
+- (void)dismissKeyboards {
+	if ([self.searchBar isFirstResponder]){
+		[self.searchBar resignFirstResponder];
+	}
 }
 
 #pragma mark - searchBar delegate
@@ -216,9 +239,12 @@ static UICompositeViewDescription *compositeDescription = nil;
 - (void)searchBar:(UISearchBar *)searchBar textDidChange:(NSString *)searchText {
 	// display searchtext in UPPERCASE
 	// searchBar.text = [searchText uppercaseString];
-	searchBar.showsCancelButton = (searchText.length > 0);
 	[ContactSelection setNameOrEmailFilter:searchText];
-	[tableController loadData];
+	if (searchText.length == 0) {
+		[tableController loadData];
+	} else {
+		[tableController loadSearchedData];
+	}
 }
 
 - (void)searchBarTextDidEndEditing:(UISearchBar *)searchBar {
@@ -231,6 +257,13 @@ static UICompositeViewDescription *compositeDescription = nil;
 
 - (void)searchBarSearchButtonClicked:(UISearchBar *)searchBar {
 	[searchBar resignFirstResponder];
+}
+
+#pragma mark - GestureRecognizerDelegate
+
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldReceiveTouch:(UITouch *)touch
+{
+	return NO;
 }
 
 @end

@@ -20,6 +20,7 @@
 #import "StatusBarView.h"
 #import "LinphoneManager.h"
 #import "PhoneMainView.h"
+#import <UserNotifications/UserNotifications.h>
 
 @implementation StatusBarView {
 
@@ -182,8 +183,8 @@
 	LinphoneRegistrationState state = LinphoneRegistrationNone;
 	NSString *message = nil;
 	LinphoneGlobalState gstate = linphone_core_get_global_state(LC);
-
-	if ([PhoneMainView.instance.currentView equal:AssistantView.compositeViewDescription]) {
+	
+	if ([PhoneMainView.instance.currentView equal:AssistantView.compositeViewDescription] || [PhoneMainView.instance.currentView equal:CountryListView.compositeViewDescription]) {
 		message = NSLocalizedString(@"Configuring account", nil);
 	} else if (gstate == LinphoneGlobalOn && !linphone_core_is_network_reachable(LC)) {
 		message = NSLocalizedString(@"Network down", nil);
@@ -294,7 +295,7 @@
 - (void)callQualityUpdate {
 	LinphoneCall *call = linphone_core_get_current_call(LC);
 	if (call != NULL) {
-		int quality = MIN(4, floor(linphone_call_get_average_quality(call)));
+		int quality = MIN(4, floor(linphone_call_get_current_quality(call)));
 		NSString *accessibilityValue = [NSString stringWithFormat:NSLocalizedString(@"Call quality: %d", nil), quality];
 		if (![accessibilityValue isEqualToString:_callQualityButton.accessibilityValue]) {
 			_callQualityButton.accessibilityValue = accessibilityValue;
@@ -317,26 +318,64 @@
 			LinphoneMediaEncryption enc =
 				linphone_call_params_get_media_encryption(linphone_call_get_current_params(call));
 			if (enc == LinphoneMediaEncryptionZRTP) {
+				NSString *code = [NSString stringWithUTF8String:linphone_call_get_authentication_token(call)];
+				NSString *myCode;
+				NSString *correspondantCode;
+				if (linphone_call_get_dir(call) == LinphoneCallIncoming) {
+					myCode = [code substringToIndex:2];
+					correspondantCode = [code substringFromIndex:2];
+				} else {
+					correspondantCode = [code substringToIndex:2];
+					myCode = [code substringFromIndex:2];
+				}
 				NSString *message =
-					[NSString stringWithFormat:NSLocalizedString(@"Confirm the following SAS with peer:\n%s", nil),
-											   linphone_call_get_authentication_token(call)];
-				if (securityDialog == nil) {
-					__block __strong StatusBarView *weakSelf = self;
-					securityDialog = [UIConfirmationDialog ShowWithMessage:message
-						cancelMessage:NSLocalizedString(@"DENY", nil)
-						confirmMessage:NSLocalizedString(@"ACCEPT", nil)
-						onCancelClick:^() {
-						  if (linphone_core_get_current_call(LC) == call) {
-							  linphone_call_set_authentication_token_verified(call, NO);
-						  }
-						  weakSelf->securityDialog = nil;
-						}
-						onConfirmationClick:^() {
-						  if (linphone_core_get_current_call(LC) == call) {
-							  linphone_call_set_authentication_token_verified(call, YES);
-						  }
-						  weakSelf->securityDialog = nil;
-						}];
+					[NSString stringWithFormat:NSLocalizedString(@"Confirm the following SAS with peer:\n"
+																 @"Say : %@\n"
+																 @"Your correspondant should say : %@",
+																 nil),
+											   myCode, correspondantCode];
+
+				if ([UIApplication sharedApplication].applicationState != UIApplicationStateActive &&
+					floor(NSFoundationVersionNumber) > NSFoundationVersionNumber_iOS_9_x_Max) {
+					UNMutableNotificationContent *content = [[UNMutableNotificationContent alloc] init];
+					content.title = NSLocalizedString(@"ZRTP verification", nil);
+					content.body = message;
+					content.categoryIdentifier = @"zrtp_request";
+					content.userInfo = @{
+						@"CallId" : [NSString
+							stringWithUTF8String:linphone_call_log_get_call_id(linphone_call_get_call_log(call))]
+					};
+
+					UNNotificationRequest *req =
+						[UNNotificationRequest requestWithIdentifier:@"zrtp_request" content:content trigger:NULL];
+					[[UNUserNotificationCenter currentNotificationCenter]
+						addNotificationRequest:req
+						 withCompletionHandler:^(NSError *_Nullable error) {
+						   // Enable or disable features based on authorization.
+						   if (error) {
+							   LOGD(@"Error while adding notification request :");
+							   LOGD(error.description);
+						   }
+						 }];
+				} else {
+					if (securityDialog == nil) {
+						__block __strong StatusBarView *weakSelf = self;
+						securityDialog = [UIConfirmationDialog ShowWithMessage:message
+							cancelMessage:NSLocalizedString(@"DENY", nil)
+							confirmMessage:NSLocalizedString(@"ACCEPT", nil)
+							onCancelClick:^() {
+							  if (linphone_core_get_current_call(LC) == call) {
+								  linphone_call_set_authentication_token_verified(call, NO);
+							  }
+							  weakSelf->securityDialog = nil;
+							}
+							onConfirmationClick:^() {
+							  if (linphone_core_get_current_call(LC) == call) {
+								  linphone_call_set_authentication_token_verified(call, YES);
+							  }
+							  weakSelf->securityDialog = nil;
+							}];
+					}
 				}
 			}
 		}

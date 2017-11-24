@@ -1,5 +1,7 @@
 "More options" = "More options";
+"Account enabled" = "Account enabled";
 "Default account" = "Default account";
+"Push Notification" = "Push Notification";
 "Username" = "Username";
 "Display name" = "Display name";
 "User ID" = "User ID";
@@ -12,5 +14,5 @@
 "Expire" = "Expire";
 "Country code prefix" = "Country code prefix";
 "Substitute + in phone numbers" = "Substitute + in phone numbers";
-"Account enabled" = "Account enabled";
+"Change password" = "Change password";
 "Remove Account" = "Remove Account";

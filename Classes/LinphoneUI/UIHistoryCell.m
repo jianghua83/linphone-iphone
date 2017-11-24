@@ -56,13 +56,13 @@
 #pragma mark - Action Functions
 
 - (IBAction)onDetails:(id)event {
-	if (callLog != NULL && linphone_call_log_get_call_id(callLog) != NULL) {
-		// Go to History details view
+	if (callLog != NULL) {
 		HistoryDetailsView *view = VIEW(HistoryDetailsView);
-		[view setCallLogId:[NSString stringWithUTF8String:linphone_call_log_get_call_id(callLog)]];
+		if (linphone_call_log_get_call_id(callLog) != NULL) {
+			// Go to History details view
+			[view setCallLogId:[NSString stringWithUTF8String:linphone_call_log_get_call_id(callLog)]];
+		}
 		[PhoneMainView.instance changeCurrentView:view.compositeViewDescription];
-	} else {
-		LOGE(@"Cannot open selected call log, it is NULL or corrupted");
 	}
 }
 
@@ -99,13 +99,13 @@
 
 	[ContactDisplay setDisplayNameLabel:displayNameLabel forAddress:addr];
 
-	int count = ms_list_size(linphone_call_log_get_user_data(callLog)) + 1;
+	size_t count = bctbx_list_size(linphone_call_log_get_user_data(callLog)) + 1;
 	if (count > 1) {
 		displayNameLabel.text =
-			[displayNameLabel.text stringByAppendingString:[NSString stringWithFormat:@" (%d)", count]];
+			[displayNameLabel.text stringByAppendingString:[NSString stringWithFormat:@" (%lu)", count]];
 	}
 
-	[_avatarImage setImage:[FastAddressBook imageForAddress:addr thumbnail:YES] bordered:NO withRoundedRadius:YES];
+	[_avatarImage setImage:[FastAddressBook imageForAddress:addr] bordered:NO withRoundedRadius:YES];
 }
 
 - (void)setEditing:(BOOL)editing {

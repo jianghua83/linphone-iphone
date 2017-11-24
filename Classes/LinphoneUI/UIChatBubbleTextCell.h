@@ -29,22 +29,26 @@
 @property(nonatomic, weak) IBOutlet UIImageView *backgroundColorImage;
 @property(nonatomic, weak) IBOutlet UIRoundedImageView *avatarImage;
 @property(nonatomic, weak) IBOutlet UILabel *contactDateLabel;
-@property(nonatomic, weak) IBOutlet UIImageView *statusErrorImage;
 @property(weak, nonatomic) IBOutlet UIActivityIndicatorView *statusInProgressSpinner;
 @property(nonatomic, weak) IBOutlet UITextViewNoDefine *messageText;
 @property(weak, nonatomic) IBOutlet UIImageView *bottomBarColor;
 @property(nonatomic, strong) id<ChatConversationDelegate> chatRoomDelegate;
 @property(strong, nonatomic) IBOutlet UIView *bubbleView;
 @property(strong, nonatomic) IBOutlet UITapGestureRecognizer *resendRecognizer;
+@property(weak, nonatomic) IBOutlet UIImageView *LIMEKO;
+@property(weak, nonatomic) IBOutlet UIImageView *imdmIcon;
+@property(weak, nonatomic) IBOutlet UILabel *imdmLabel;
 
 + (CGSize)ViewSizeForMessage:(LinphoneChatMessage *)chat withWidth:(int)width;
 
 - (void)setChatMessage:(LinphoneChatMessage *)message;
 
-- (IBAction)onDeleteClick:(id)event;
-- (IBAction)onResendClick:(id)event;
+- (void)onDelete;
+- (void)onResend;
+- (void)onLime;
 - (void)update;
 
+- (void)displayImdmStatus:(LinphoneChatMessageState)state;
 + (CGSize)ViewHeightForMessage:(LinphoneChatMessage *)chat withWidth:(int)width;
 + (NSString *)TextMessageForChat:(LinphoneChatMessage *)message;
 + (CGSize)computeBoundingBox:(NSString *)text size:(CGSize)size font:(UIFont *)font;

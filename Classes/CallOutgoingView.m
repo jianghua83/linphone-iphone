@@ -67,7 +67,7 @@ static UICompositeViewDescription *compositeDescription = nil;
 	char *uri = linphone_address_as_string_uri_only(addr);
 	_addressLabel.text = [NSString stringWithUTF8String:uri];
 	ms_free(uri);
-	[_avatarImage setImage:[FastAddressBook imageForAddress:addr thumbnail:NO] bordered:YES withRoundedRadius:YES];
+	[_avatarImage setImage:[FastAddressBook imageForAddress:addr] bordered:NO withRoundedRadius:YES];
 
 	[self hideSpeaker:LinphoneManager.instance.bluetoothAvailable];
 
@@ -94,6 +94,7 @@ static UICompositeViewDescription *compositeDescription = nil;
 
 - (IBAction)onRoutesBluetoothClick:(id)sender {
 	[self hideRoutes:TRUE animated:TRUE];
+	[LinphoneManager.instance setSpeakerEnabled:FALSE];
 	[LinphoneManager.instance setBluetoothEnabled:TRUE];
 }
 
@@ -105,6 +106,7 @@ static UICompositeViewDescription *compositeDescription = nil;
 
 - (IBAction)onRoutesSpeakerClick:(id)sender {
 	[self hideRoutes:TRUE animated:TRUE];
+	[LinphoneManager.instance setBluetoothEnabled:FALSE];
 	[LinphoneManager.instance setSpeakerEnabled:TRUE];
 }
 
@@ -119,7 +121,7 @@ static UICompositeViewDescription *compositeDescription = nil;
 - (IBAction)onDeclineClick:(id)sender {
 	LinphoneCall *call = linphone_core_get_current_call(LC);
 	if (call) {
-		linphone_core_terminate_call(LC, call);
+		linphone_call_terminate(call);
 	}
 }
 
@@ -148,7 +150,9 @@ static UICompositeViewDescription *compositeDescription = nil;
 
 - (void)bluetoothAvailabilityUpdateEvent:(NSNotification *)notif {
 	bool available = [[notif.userInfo objectForKey:@"available"] intValue];
-	[self hideSpeaker:available];
+	dispatch_async(dispatch_get_main_queue(), ^{
+		[self hideSpeaker:available];
+	});
 }
 
 @end

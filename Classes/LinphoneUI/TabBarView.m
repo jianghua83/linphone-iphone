@@ -142,12 +142,14 @@
 #pragma mark - Action Functions
 
 - (IBAction)onHistoryClick:(id)event {
+	linphone_core_reset_missed_calls_count(LC);
+	[self update:FALSE];
+	[PhoneMainView.instance updateApplicationBadgeNumber];
 	[PhoneMainView.instance changeCurrentView:HistoryListView.compositeViewDescription];
 }
 
 - (IBAction)onContactsClick:(id)event {
 	[ContactSelection setAddAddress:nil];
-	[ContactSelection setSipFilter:nil];
 	[ContactSelection enableEmailFilter:FALSE];
 	[ContactSelection setNameOrEmailFilter:nil];
 	[PhoneMainView.instance changeCurrentView:ContactsListView.compositeViewDescription];

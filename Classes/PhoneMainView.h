@@ -24,26 +24,27 @@
 #import "TabBarView.h"
 
 #import "AboutView.h"
-#import "ChatConversationView.h"
+#import "AssistantLinkView.h"
+#import "AssistantView.h"
+#import "CallIncomingView.h"
+#import "CallOutgoingView.h"
+#import "CallSideMenuView.h"
+#import "CallView.h"
 #import "ChatConversationCreateView.h"
+#import "ChatConversationView.h"
 #import "ChatsListView.h"
 #import "ContactDetailsView.h"
 #import "ContactsListView.h"
+#import "CountryListView.h"
+#import "DTActionSheet.h"
 #import "DialerView.h"
+#import "FirstLoginView.h"
 #import "HistoryDetailsView.h"
 #import "HistoryListView.h"
 #import "ImageView.h"
-#import "CallView.h"
-#import "CallIncomingView.h"
-#import "CallOutgoingView.h"
-#import "FirstLoginView.h"
 #import "SettingsView.h"
 #import "SideMenuView.h"
-#import "AssistantView.h"
-#import "CallSideMenuView.h"
 #import "UIConfirmationDialog.h"
-#import "DTAlertView.h"
-#import "DTActionSheet.h"
 #import "Utils.h"
 
 #define DYNAMIC_CAST(x, cls)                                                                                           \
@@ -77,13 +78,19 @@
 @property(nonatomic, strong) IBOutlet UIView *statusBarBG;
 @property(nonatomic, strong) IBOutlet UICompositeView *mainViewController;
 
+@property(nonatomic, strong) NSString *currentName;
+@property(nonatomic, strong) NSString *previousView;
 @property(nonatomic, strong) NSString *name;
 @property(weak, readonly) UICompositeViewDescription *currentView;
+@property LinphoneChatRoom* currentRoom;
 @property(readonly, strong) MPVolumeView *volumeView;
 
 - (void)changeCurrentView:(UICompositeViewDescription *)view;
 - (UIViewController*)popCurrentView;
 - (UIViewController *)popToView:(UICompositeViewDescription *)currentView;
+- (void) setPreviousViewName:(NSString*)previous;
+- (NSString*) getPreviousViewName;
++ (NSString*) getPreviousViewName;
 - (UICompositeViewDescription *)firstView;
 - (void)hideStatusBar:(BOOL)hide;
 - (void)hideTabBar:(BOOL)hide;

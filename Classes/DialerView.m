@@ -131,6 +131,12 @@ static UICompositeViewDescription *compositeDescription = nil;
 	UILongPressGestureRecognizer *oneLongGesture =
 		[[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(onOneLongClick:)];
 	[_oneButton addGestureRecognizer:oneLongGesture];
+	
+	UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc]
+																					initWithTarget:self
+																					action:@selector(dismissKeyboards)];
+	
+	[self.view addGestureRecognizer:tap];
 
 	if (IPAD) {
 		if (LinphoneManager.instance.frontCamId != nil) {
@@ -163,6 +169,18 @@ static UICompositeViewDescription *compositeDescription = nil;
 	frame.origin = CGPointMake(0, 0);
 	_videoPreview.frame = frame;
 	_padView.hidden = !IPAD && UIInterfaceOrientationIsLandscape(toInterfaceOrientation);
+	if (linphone_core_get_calls_nb(LC)) {
+		_backButton.hidden = FALSE;
+		_addContactButton.hidden = TRUE;
+	} else {
+		_backButton.hidden = TRUE;
+		_addContactButton.hidden = FALSE;
+	}
+}
+
+- (void)viewDidAppear:(BOOL)animated {
+	[super viewDidAppear:animated];
+	[LinphoneManager.instance shouldPresentLinkPopup];
 }
 
 #pragma mark - Event Functions
@@ -174,16 +192,26 @@ static UICompositeViewDescription *compositeDescription = nil;
 }
 
 - (void)coreUpdateEvent:(NSNotification *)notif {
-	if (IPAD) {
-		if (linphone_core_video_display_enabled(LC) && linphone_core_video_preview_enabled(LC)) {
-			linphone_core_set_native_preview_window_id(LC, (__bridge void *)(_videoPreview));
-			[_backgroundView setHidden:FALSE];
-			[_videoCameraSwitch setHidden:FALSE];
-		} else {
-			linphone_core_set_native_preview_window_id(LC, NULL);
-			[_backgroundView setHidden:TRUE];
-			[_videoCameraSwitch setHidden:TRUE];
+	@try {
+		if (IPAD) {
+			if (linphone_core_video_display_enabled(LC) && linphone_core_video_preview_enabled(LC)) {
+				linphone_core_set_native_preview_window_id(LC, (__bridge void *)(_videoPreview));
+				[_backgroundView setHidden:FALSE];
+				[_videoCameraSwitch setHidden:FALSE];
+			} else {
+				linphone_core_set_native_preview_window_id(LC, NULL);
+				[_backgroundView setHidden:TRUE];
+				[_videoCameraSwitch setHidden:TRUE];
+			}
 		}
+	}
+	@catch (NSException *exception) {
+		if ([exception.name isEqualToString:@"LinphoneCoreException"]) {
+			LOGE(@"Core already destroyed");
+			return;
+		}
+		LOGE(@"Uncaught exception : %@", exception.description);
+		abort();
 	}
 }
 
@@ -229,13 +257,17 @@ static UICompositeViewDescription *compositeDescription = nil;
 		}
 
 	} else {
-		UIAlertView *alert =
-			[[UIAlertView alloc] initWithTitle:subject
-									   message:NSLocalizedString(@"Error: no mail account configured", nil)
-									  delegate:nil
-							 cancelButtonTitle:NSLocalizedString(@"OK", nil)
-							 otherButtonTitles:nil];
-		[alert show];
+		UIAlertController *errView = [UIAlertController alertControllerWithTitle:subject
+																		 message:NSLocalizedString(@"Error: no mail account configured",
+																								   nil)
+																  preferredStyle:UIAlertControllerStyleAlert];
+		
+		UIAlertAction* defaultAction = [UIAlertAction actionWithTitle:@"OK"
+																style:UIAlertActionStyleDefault
+															  handler:^(UIAlertAction * action) {}];
+		
+		[errView addAction:defaultAction];
+		[self presentViewController:errView animated:YES completion:nil];
 	}
 }
 
@@ -243,59 +275,69 @@ static UICompositeViewDescription *compositeDescription = nil;
 	LinphoneManager *mgr = LinphoneManager.instance;
 	NSString *debugAddress = [mgr lpConfigStringForKey:@"debug_popup_magic" withDefault:@""];
 	if (![debugAddress isEqualToString:@""] && [address isEqualToString:debugAddress]) {
-
-		DTAlertView *alertView = [[DTAlertView alloc] initWithTitle:NSLocalizedString(@"Debug", nil)
-															message:NSLocalizedString(@"Choose an action", nil)];
-
-		[alertView addCancelButtonWithTitle:NSLocalizedString(@"Cancel", nil) block:nil];
-
-		[alertView
-			addButtonWithTitle:NSLocalizedString(@"Send logs", nil)
-						 block:^{
-						   NSString *appName =
-							   [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleDisplayName"];
-						   NSString *logsAddress = [mgr lpConfigStringForKey:@"debug_popup_email" withDefault:@""];
-						   [self presentMailViewWithTitle:appName forRecipients:@[ logsAddress ] attachLogs:true];
-						 }];
+		UIAlertController *errView = [UIAlertController alertControllerWithTitle:NSLocalizedString(@"Debug", nil)
+																		 message:NSLocalizedString(@"Choose an action", nil)
+																  preferredStyle:UIAlertControllerStyleAlert];
+		
+		UIAlertAction* defaultAction = [UIAlertAction actionWithTitle:NSLocalizedString(@"Cancel", nil)
+																style:UIAlertActionStyleDefault
+															  handler:^(UIAlertAction * action) {}];
+		
+		[errView addAction:defaultAction];
 
 		int debugLevel = [LinphoneManager.instance lpConfigIntForKey:@"debugenable_preference"];
 		BOOL debugEnabled = (debugLevel >= ORTP_DEBUG && debugLevel < ORTP_ERROR);
+
+		if (debugEnabled) {
+			UIAlertAction* continueAction = [UIAlertAction actionWithTitle:NSLocalizedString(@"Send logs", nil)
+																	 style:UIAlertActionStyleDefault
+																   handler:^(UIAlertAction * action) {
+																	   NSString *appName =
+																	   [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleDisplayName"];
+																	   NSString *logsAddress = [mgr lpConfigStringForKey:@"debug_popup_email" withDefault:@""];
+																	   [self presentMailViewWithTitle:appName forRecipients:@[ logsAddress ] attachLogs:true];
+																   }];
+			[errView addAction:continueAction];
+		}
 		NSString *actionLog =
 			(debugEnabled ? NSLocalizedString(@"Disable logs", nil) : NSLocalizedString(@"Enable logs", nil));
-		[alertView
-			addButtonWithTitle:actionLog
-						 block:^{
-						   int newDebugLevel = debugEnabled ? ORTP_ERROR : ORTP_DEBUG;
-						   [LinphoneManager.instance lpConfigSetInt:newDebugLevel forKey:@"debugenable_preference"];
-						   [Log enableLogs:newDebugLevel];
-						 }];
-
-		[alertView
-			addButtonWithTitle:NSLocalizedString(@"Remove account(s) and self destruct", nil)
-						 block:^{
-						   linphone_core_clear_proxy_config([LinphoneManager getLc]);
-						   linphone_core_clear_all_auth_info([LinphoneManager getLc]);
-						   @try {
-							   [LinphoneManager.instance destroyLinphoneCore];
-						   } @catch (NSException *e) {
-							   LOGW(@"Exception while destroying linphone core: %@", e);
-						   } @finally {
-							   if ([NSFileManager.defaultManager
-									   isDeletableFileAtPath:[LinphoneManager documentFile:@"linphonerc"]] == YES) {
-								   [NSFileManager.defaultManager
-									   removeItemAtPath:[LinphoneManager documentFile:@"linphonerc"]
-												  error:nil];
-							   }
+		
+		UIAlertAction* logAction = [UIAlertAction actionWithTitle:actionLog
+															style:UIAlertActionStyleDefault
+														  handler:^(UIAlertAction * action) {
+																   int newDebugLevel = debugEnabled ? 0 : ORTP_DEBUG;
+																   [LinphoneManager.instance lpConfigSetInt:newDebugLevel forKey:@"debugenable_preference"];
+																   [Log enableLogs:newDebugLevel];
+															   }];
+		[errView addAction:logAction];
+		
+		UIAlertAction* remAction = [UIAlertAction actionWithTitle:NSLocalizedString(@"Remove account(s) and self destruct", nil)
+															style:UIAlertActionStyleDefault
+														  handler:^(UIAlertAction * action) {
+															  linphone_core_clear_proxy_config([LinphoneManager getLc]);
+															  linphone_core_clear_all_auth_info([LinphoneManager getLc]);
+															  @try {
+																  [LinphoneManager.instance destroyLinphoneCore];
+															  } @catch (NSException *e) {
+																  LOGW(@"Exception while destroying linphone core: %@", e);
+															  } @finally {
+																  if ([NSFileManager.defaultManager
+																	   isDeletableFileAtPath:[LinphoneManager documentFile:@"linphonerc"]] == YES) {
+																	  [NSFileManager.defaultManager
+																	   removeItemAtPath:[LinphoneManager documentFile:@"linphonerc"]
+																	   error:nil];
+																  }
 #ifdef DEBUG
-							   [LinphoneManager instanceRelease];
+																  [LinphoneManager instanceRelease];
 #endif
-						   }
-						   [UIApplication sharedApplication].keyWindow.rootViewController = nil;
-						   // make the application crash to be sure that user restart it properly
-						   LOGF(@"Self-destructing in 3..2..1..0!");
-						 }];
-
-		[alertView show];
+															  }
+															  [UIApplication sharedApplication].keyWindow.rootViewController = nil;
+															  // make the application crash to be sure that user restart it properly
+															  LOGF(@"Self-destructing in 3..2..1..0!");
+														  }];
+		[errView addAction:remAction];
+		
+		[self presentViewController:errView animated:YES completion:nil];
 		return true;
 	}
 	return false;
@@ -367,12 +409,15 @@ static UICompositeViewDescription *compositeDescription = nil;
 		_addressField.text = @"";
 	}
 	_addContactButton.enabled = _backspaceButton.enabled = ([[_addressField text] length] > 0);
+    if ([_addressField.text length] == 0) {
+        [self.view endEditing:YES];
+    }
 }
 
 - (IBAction)onBackspaceClick:(id)sender {
 	if ([_addressField.text length] > 0) {
 		[_addressField setText:[_addressField.text substringToIndex:[_addressField.text length] - 1]];
-	}
+    }
 }
 
 - (void)onBackspaceLongClick:(id)sender {
@@ -399,5 +444,9 @@ static UICompositeViewDescription *compositeDescription = nil;
 		LOGE(@"Cannot call voice mail because URI not set or invalid!");
 	}
 	linphone_core_stop_dtmf(LC);
+}
+
+- (void)dismissKeyboards {
+	[self.addressField resignFirstResponder];
 }
 @end

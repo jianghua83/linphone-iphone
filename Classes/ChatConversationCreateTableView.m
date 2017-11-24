@@ -35,8 +35,7 @@
 
 	[_allContacts enumerateKeysAndObjectsUsingBlock:^(id key, id value, BOOL *stop) {
 	  NSString *address = (NSString *)key;
-	  ABRecordRef person = (__bridge ABRecordRef)(value);
-	  NSString *name = [FastAddressBook displayNameForContact:person];
+	  NSString *name = [FastAddressBook displayNameForContact:value];
 	  if ((filter.length == 0) || ([name.lowercaseString containsSubstring:filter.lowercaseString]) ||
 		  ([address.lowercaseString containsSubstring:filter.lowercaseString])) {
 		  _contacts[address] = name;
@@ -74,22 +73,38 @@
 		cell = [[UIChatCreateCell alloc] initWithIdentifier:kCellId];
 	}
 	cell.displayNameLabel.text = [_contacts.allValues objectAtIndex:indexPath.row];
-	cell.addressLabel.text = [_contacts.allKeys objectAtIndex:indexPath.row];
+	LinphoneAddress *addr = [LinphoneUtils normalizeSipOrPhoneAddress:[_contacts.allKeys objectAtIndex:indexPath.row]];
+	if (addr) {
+		cell.addressLabel.text = [NSString stringWithUTF8String:linphone_address_as_string(addr)];
+	} else {
+		cell.addressLabel.text = [_contacts.allKeys objectAtIndex:indexPath.row];
+	}
 	return cell;
 }
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
 	[tableView deselectRowAtIndexPath:indexPath animated:YES];
-	LinphoneChatRoom *room = linphone_core_get_chat_room_from_uri(
-		LC, ((NSString *)[_contacts.allKeys objectAtIndex:indexPath.row]).UTF8String);
+	NSString *uri;
+	LinphoneAddress *addr = [LinphoneUtils normalizeSipOrPhoneAddress:[_contacts.allKeys objectAtIndex:indexPath.row]];
+	if (addr) {
+		uri = [NSString stringWithUTF8String:linphone_address_as_string(addr)];
+	} else {
+		uri = [_contacts.allKeys objectAtIndex:indexPath.row];
+	}
+	LinphoneChatRoom *room = linphone_core_get_chat_room_from_uri(LC, uri.UTF8String);
 	if (!room) {
 		[PhoneMainView.instance popCurrentView];
-		UIAlertView *alert = [[UIAlertView alloc] initWithTitle:NSLocalizedString(@"Invalid address", nil)
-														message:@"Please specify the entire SIP address for the chat"
-													   delegate:nil
-											  cancelButtonTitle:NSLocalizedString(@"OK", nil)
-											  otherButtonTitles:nil];
-		[alert show];
+		UIAlertController *errView = [UIAlertController alertControllerWithTitle:NSLocalizedString(@"Invalid address", nil)
+																		 message:NSLocalizedString(@"Please specify the entire SIP address for the chat",
+																									   nil)
+																  preferredStyle:UIAlertControllerStyleAlert];
+			
+		UIAlertAction* defaultAction = [UIAlertAction actionWithTitle:@"OK"
+																style:UIAlertActionStyleDefault
+																handler:^(UIAlertAction * action) {}];
+		defaultAction.accessibilityLabel = @"OK";
+		[errView addAction:defaultAction];
+		[PhoneMainView.instance presentViewController:errView animated:YES completion:nil];
 	} else {
 		ChatConversationView *view = VIEW(ChatConversationView);
 		[view setChatRoom:room];

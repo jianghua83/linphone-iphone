@@ -181,11 +181,11 @@
 
 	NSMutableDictionary *newItemDict = [NSMutableDictionary dictionaryWithCapacity:3];
 	[newItemDict addEntriesFromDictionary:[_viewList objectAtIndex:kIASKSpecifierValuesViewControllerIndex]]; // copy
-																											  // the
-																											  // title
-																											  // and
-																											  // explain
-																											  // strings
+	// the
+	// title
+	// and
+	// explain
+	// strings
 
 	IASKSpecifierValuesViewController *targetViewController = [[IASKSpecifierValuesViewControllerEx alloc] init];
 	// add the new view controller to the dictionary and then to the 'viewList' array
@@ -373,10 +373,6 @@ static UICompositeViewDescription *compositeDescription = nil;
 	[_settingsController dismiss:self];
 	// Set observer
 	[NSNotificationCenter.defaultCenter removeObserver:self name:kIASKAppSettingChanged object:nil];
-
-	if (linphone_ringtoneplayer_is_started(linphone_core_get_ringtoneplayer(LC))) {
-		linphone_core_stop_ringing(LC);
-	}
 }
 
 - (void)viewWillAppear:(BOOL)animated {
@@ -391,6 +387,79 @@ static UICompositeViewDescription *compositeDescription = nil;
 										   selector:@selector(appSettingChanged:)
 											   name:kIASKAppSettingChanged
 											 object:nil];
+}
+
+#pragma mark - Account Creator callbacks
+
+void update_hash_cbs(LinphoneAccountCreator *creator, LinphoneAccountCreatorStatus status, const char *resp) {
+	SettingsView *thiz = (__bridge SettingsView *)(linphone_account_creator_cbs_get_user_data(
+		linphone_account_creator_get_callbacks(creator)));
+
+	switch (status) {
+		case LinphoneAccountCreatorStatusRequestOk:
+			[thiz updatePassword:creator];
+			break;
+		default:
+			[thiz showError:status];
+			break;
+	}
+}
+	
+- (void) showError:(LinphoneAccountCreatorStatus) status {
+	_tmpPwd = NULL;
+	NSString* err;
+	switch (status) {
+		case LinphoneAccountCreatorStatusAccountNotExist:
+			err = NSLocalizedString(@"Bad credentials, check your account settings", nil);
+			break;
+		case LinphoneAccountCreatorStatusServerError:
+			err = NSLocalizedString(@"Server error, please try again later.", nil);
+			break;
+		default:
+			err = NSLocalizedString(@"Unknown error, please try again later.", nil);
+			break;
+	}
+	
+	UIAlertController *errView = [UIAlertController alertControllerWithTitle:NSLocalizedString(@"Error while changing your password", nil)
+																	 message:err
+															  preferredStyle:UIAlertControllerStyleAlert];
+	
+	UIAlertAction* defaultAction = [UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault
+														  handler:^(UIAlertAction * action) {}];
+	
+	[errView addAction:defaultAction];
+	[self presentViewController:errView animated:YES completion:nil];
+}
+
+- (void) updatePassword:(LinphoneAccountCreator*) creator {
+	linphone_account_creator_set_password(creator, _tmpPwd.UTF8String);
+	[settingsStore setObject:_tmpPwd forKey:@"account_mandatory_password_preference"];
+	
+	LinphoneProxyConfig *config = bctbx_list_nth_data(linphone_core_get_proxy_config_list(LC),
+													  [settingsStore integerForKey:@"current_proxy_config_preference"]);
+	if (config != NULL) {
+		const LinphoneAuthInfo *auth = linphone_proxy_config_find_auth_info(config);
+		if (auth) {
+			LinphoneAuthInfo * newAuth = linphone_auth_info_clone(auth);
+			linphone_auth_info_set_passwd(newAuth, _tmpPwd.UTF8String);
+			linphone_core_remove_auth_info(LC, auth);
+			linphone_core_add_auth_info(LC, newAuth);
+		}
+	}
+	[self recomputeAccountLabelsAndSync];
+	[settingsStore setObject:_tmpPwd forKey:@"account_mandatory_password_preference"];
+	_tmpPwd = NULL;
+	
+	
+	UIAlertController *errView = [UIAlertController alertControllerWithTitle:NSLocalizedString(@"Changing your password", nil)
+																	 message:NSLocalizedString(@"Your password has been successfully changed", nil)
+															  preferredStyle:UIAlertControllerStyleAlert];
+	
+	UIAlertAction* defaultAction = [UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault
+														  handler:^(UIAlertAction * action) {}];
+	
+	[errView addAction:defaultAction];
+	[self presentViewController:errView animated:YES completion:nil];
 }
 
 #pragma mark - Event Functions
@@ -413,6 +482,10 @@ static UICompositeViewDescription *compositeDescription = nil;
 		NSString *stun_server = [notif.userInfo objectForKey:@"stun_preference"];
 		removeFromHiddenKeys = (stun_server && ([stun_server length] > 0));
 		[keys addObject:@"ice_preference"];
+	} else if ([@"turn_preference" compare:notif.object] == NSOrderedSame) {
+		LinphoneNatPolicy *LNP = linphone_core_get_nat_policy(LC);
+		linphone_nat_policy_enable_turn(LNP, !linphone_nat_policy_turn_enabled(LNP));
+		[keys addObject:@"turn_preference"];
 	} else if ([@"debugenable_preference" compare:notif.object] == NSOrderedSame) {
 		int debugLevel = [[notif.userInfo objectForKey:@"debugenable_preference"] intValue];
 		BOOL debugEnabled = (debugLevel >= ORTP_DEBUG && debugLevel < ORTP_ERROR);
@@ -496,10 +569,10 @@ static UICompositeViewDescription *compositeDescription = nil;
 	}
 
 	if ([specifier.key hasPrefix:@"menu_account_"]) {
-		const MSList *accounts = linphone_core_get_proxy_config_list(LC);
+		const bctbx_list_t *accounts = linphone_core_get_proxy_config_list(LC);
 		int index = [specifier.key substringFromIndex:@"menu_account_".length].intValue - 1;
-		if (index < ms_list_size(accounts)) {
-			LinphoneProxyConfig *proxy = (LinphoneProxyConfig *)ms_list_nth_data(accounts, index);
+		if (index < bctbx_list_size(accounts)) {
+			LinphoneProxyConfig *proxy = (LinphoneProxyConfig *)bctbx_list_nth_data(accounts, index);
 			NSString *name = [NSString
 				stringWithUTF8String:linphone_address_get_username(linphone_proxy_config_get_identity_address(proxy))];
 			[specifier.specifierDict setValue:name forKey:kIASKTitle];
@@ -514,12 +587,16 @@ static UICompositeViewDescription *compositeDescription = nil;
 	NSMutableSet *hiddenKeys = [NSMutableSet set];
 
 	const MSList *accounts = linphone_core_get_proxy_config_list(LC);
-	for (int i = ms_list_size(accounts) + 1; i <= 5; i++) {
-		[hiddenKeys addObject:[NSString stringWithFormat:@"menu_account_%d", i]];
+	for (size_t i = bctbx_list_size(accounts) + 1; i <= 5; i++) {
+		[hiddenKeys addObject:[NSString stringWithFormat:@"menu_account_%lu", i]];
 	}
 
 	if (!linphone_core_sip_transport_supported(LC, LinphoneTransportTls)) {
 		[hiddenKeys addObject:@"media_encryption_preference"];
+	}
+
+	if (!linphone_core_lime_available(LC)) {
+		[hiddenKeys addObject:@"use_lime_preference"];
 	}
 
 #ifndef DEBUG
@@ -605,6 +682,7 @@ static UICompositeViewDescription *compositeDescription = nil;
 	if (!IPAD) {
 		[hiddenKeys addObject:@"preview_preference"];
 	}
+
 	if ([lm lpConfigBoolForKey:@"hide_run_assistant_preference"]) {
 		[hiddenKeys addObject:@"assistant_button"];
 	}
@@ -687,6 +765,7 @@ static UICompositeViewDescription *compositeDescription = nil;
 				LinphoneChatMessage *msg = messages->data;
 				if (!linphone_chat_message_is_outgoing(msg)) {
 					[LinphoneManager setValueInMessageAppData:nil forKey:@"localimage" inMessage:messages->data];
+					[LinphoneManager setValueInMessageAppData:nil forKey:@"uploadQuality" inMessage:messages->data];
 				}
 				messages = messages->next;
 			}
@@ -698,18 +777,151 @@ static UICompositeViewDescription *compositeDescription = nil;
 		[PhoneMainView.instance changeCurrentView:AssistantView.compositeViewDescription];
 		return;
 	} else if ([key isEqual:@"account_mandatory_remove_button"]) {
-		DTAlertView *alert = [[DTAlertView alloc]
-			initWithTitle:NSLocalizedString(@"Warning", nil)
-				  message:NSLocalizedString(@"Are you sure to want to remove your proxy setup?", nil)];
+		UIAlertController *errView = [UIAlertController alertControllerWithTitle:NSLocalizedString(@"Warning", nil)
+																		 message:NSLocalizedString(@"Are you sure to want to remove your proxy setup?", nil)
+																  preferredStyle:UIAlertControllerStyleAlert];
+		
+		UIAlertAction* defaultAction = [UIAlertAction actionWithTitle:NSLocalizedString(@"Cancel", nil)
+																style:UIAlertActionStyleDefault
+															  handler:^(UIAlertAction * action) {}];
+		
+		UIAlertAction* continueAction = [UIAlertAction actionWithTitle:NSLocalizedString(@"Yes", nil)
+																 style:UIAlertActionStyleDefault
+															   handler:^(UIAlertAction * action) {
+																   [settingsStore removeAccount];
+																   [self recomputeAccountLabelsAndSync];
+																   [_settingsController.navigationController popViewControllerAnimated:NO];
+															   }];
+		
+		[errView addAction:defaultAction];
+		[errView addAction:continueAction];
+		[self presentViewController:errView animated:YES completion:nil];
+	} else if ([key isEqual:@"account_mandatory_change_password"]) {
+		UIAlertController *alertView = [UIAlertController alertControllerWithTitle:NSLocalizedString(@"Change your password", nil)
+																		 message:NSLocalizedString(@"Please enter and confirm your new password", nil)
+																  preferredStyle:UIAlertControllerStyleAlert];
+		
+		[alertView addTextFieldWithConfigurationHandler:^(UITextField *textField) {
+			textField.placeholder = NSLocalizedString(@"Password", nil);
+			textField.clearButtonMode = UITextFieldViewModeWhileEditing;
+			textField.borderStyle = UITextBorderStyleRoundedRect;
+			textField.secureTextEntry = YES;
+		}];
+		
+		[alertView addTextFieldWithConfigurationHandler:^(UITextField *textField) {
+			textField.placeholder = NSLocalizedString(@"Confirm password", nil);
+			textField.clearButtonMode = UITextFieldViewModeWhileEditing;
+			textField.borderStyle = UITextBorderStyleRoundedRect;
+			textField.secureTextEntry = YES;
+		}];
+		
+		UIAlertAction* defaultAction = [UIAlertAction actionWithTitle:NSLocalizedString(@"Cancel", nil)
+																style:UIAlertActionStyleDefault
+															  handler:^(UIAlertAction * action) {}];
+		
+		UIAlertAction* continueAction = [UIAlertAction actionWithTitle:NSLocalizedString(@"Save", nil)
+																 style:UIAlertActionStyleDefault
+															   handler:^(UIAlertAction * action) {
+																   NSString * pwd = alertView.textFields[0].text;
+																   NSString * conf_pwd = alertView.textFields[1].text;
+																   if (pwd && ![pwd isEqualToString:@""]) {
+																	   if ([pwd isEqualToString:conf_pwd]) {
+																		   _tmpPwd = pwd;
+																		   LinphoneProxyConfig *config = bctbx_list_nth_data(linphone_core_get_proxy_config_list(LC),
+																													[settingsStore integerForKey:@"current_proxy_config_preference"]);
+																		   const LinphoneAuthInfo *ai = linphone_proxy_config_find_auth_info(config);
+																   
+																		   LinphoneAccountCreator *account_creator = linphone_account_creator_new(
+																												  LC, [LinphoneManager.instance lpConfigStringForKey:@"xmlrpc_url" inSection:@"assistant" withDefault:@""]
+																												  .UTF8String);
+																		   if (!ai) {
+																			   UIAlertController *errView = [UIAlertController
+																				   alertControllerWithTitle:
+																					   NSLocalizedString(
+																						   @"Error while changing your "
+																						   @"password",
+																						   nil)
+																									message:
+																										NSLocalizedString(
+																											@"Your "
+																											@"account "
+																											@"is not "
+																											@"a "
+																											@"Linphone"
+																											@" account"
+																											@".\n"
+																											@"We can "
+																											@"not "
+																											@"change "
+																											@"your "
+																											@"password"
+																											@".",
+																											nil)
+																							 preferredStyle:
+																								 UIAlertControllerStyleAlert];
 
-		[alert addCancelButtonWithTitle:NSLocalizedString(@"Cancel", nil) block:nil];
-		[alert addButtonWithTitle:NSLocalizedString(@"Yes", nil)
-							block:^{
-							  [settingsStore removeAccount];
-							  [self recomputeAccountLabelsAndSync];
-							  [_settingsController.navigationController popViewControllerAnimated:NO];
-							}];
-		[alert show];
+																			   UIAlertAction *defaultAction = [UIAlertAction
+																				   actionWithTitle:@"OK"
+																							 style:
+																								 UIAlertActionStyleDefault
+																						   handler:^(
+																							   UIAlertAction *action){
+																						   }];
+
+																			   [errView addAction:defaultAction];
+																			   [self presentViewController:errView
+																								  animated:YES
+																								completion:nil];
+																			   return;
+																		   }
+																		   linphone_account_creator_set_username(account_creator, linphone_auth_info_get_username(ai));
+																		   if (linphone_auth_info_get_passwd(ai) && !(strcmp(linphone_auth_info_get_passwd(ai),"") == 0)) {
+																			   linphone_account_creator_set_password(account_creator, linphone_auth_info_get_passwd(ai));
+																		   } else {
+																			   linphone_account_creator_set_ha1(account_creator, linphone_auth_info_get_ha1(ai));
+																		   }
+																		   
+																		   linphone_account_creator_set_domain(account_creator, linphone_auth_info_get_domain(ai));
+																		   linphone_account_creator_set_user_data(
+																			   account_creator, (void *)pwd.UTF8String);
+																		   linphone_account_creator_cbs_set_update_account(
+																			   linphone_account_creator_get_callbacks(
+																				   account_creator),
+																			   update_hash_cbs);
+																		   linphone_account_creator_cbs_set_user_data(
+																			   linphone_account_creator_get_callbacks(
+																				   account_creator),
+																			   (__bridge void *)(self));
+																		   linphone_account_creator_update_account(
+																			   account_creator);
+																	   } else {
+																		   UIAlertController *errView = [UIAlertController alertControllerWithTitle:NSLocalizedString(@"Error while changing your password", nil)
+																																			message:NSLocalizedString(@"Your confirmation password doesn't match your password", nil)
+																																	 preferredStyle:UIAlertControllerStyleAlert];
+																	   
+																		   UIAlertAction* defaultAction = [UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault
+																															 handler:^(UIAlertAction * action) {}];
+																	   
+																		   [errView addAction:defaultAction];
+																		   [self presentViewController:errView animated:YES completion:nil];
+																	   }
+																   } else {
+																	   UIAlertController *errView = [UIAlertController alertControllerWithTitle:NSLocalizedString(@"Error while changing your password", nil)
+																																		message:NSLocalizedString(@"Please enter and confirm your new password", nil)
+																																 preferredStyle:UIAlertControllerStyleAlert];
+																	   
+																	   UIAlertAction* defaultAction = [UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault
+																															 handler:^(UIAlertAction * action) {}];
+																	   
+																	   [errView addAction:defaultAction];
+																	   [self presentViewController:errView animated:YES completion:nil];
+																   }
+															   }];
+
+		
+		[alertView addAction:defaultAction];
+		[alertView addAction:continueAction];
+		[self presentViewController:alertView animated:YES completion:nil];
 	} else if ([key isEqual:@"reset_logs_button"]) {
 		linphone_core_reset_log_collection();
 	} else if ([key isEqual:@"send_logs_button"]) {
@@ -730,15 +942,23 @@ static UICompositeViewDescription *compositeDescription = nil;
 										@"important to diagnostize your issue.",
 										nil);
 		}
-
-		DTAlertView *alert =
-			[[DTAlertView alloc] initWithTitle:NSLocalizedString(@"Sending logs", nil) message:message];
-		[alert addCancelButtonWithTitle:NSLocalizedString(@"Cancel", nil) block:nil];
-		[alert addButtonWithTitle:NSLocalizedString(@"I got it, continue", nil)
-							block:^{
-							  [self sendEmailWithDebugAttachments];
-							}];
-		[alert show];
+		UIAlertController *errView = [UIAlertController alertControllerWithTitle:NSLocalizedString(@"Sending logs", nil)
+																		 message:message
+																  preferredStyle:UIAlertControllerStyleAlert];
+		
+		UIAlertAction* defaultAction = [UIAlertAction actionWithTitle:NSLocalizedString(@"Cancel", nil)
+																style:UIAlertActionStyleDefault
+															  handler:^(UIAlertAction * action) {}];
+		
+		UIAlertAction* continueAction = [UIAlertAction actionWithTitle:NSLocalizedString(@"I got it, continue", nil)
+																 style:UIAlertActionStyleDefault
+															   handler:^(UIAlertAction * action) {
+																   [self sendEmailWithDebugAttachments];
+															   }];
+		
+		[errView addAction:defaultAction];
+		[errView addAction:continueAction];
+		[self presentViewController:errView animated:YES completion:nil];
 	}
 }
 
@@ -780,11 +1000,16 @@ static UICompositeViewDescription *compositeDescription = nil;
 	}
 
 	if (attachments.count == 0) {
-		DTAlertView *alert = [[DTAlertView alloc]
-			initWithTitle:NSLocalizedString(@"Cannot send logs", nil)
-				  message:NSLocalizedString(@"Nothing could be collected from your application, aborting now.", nil)];
-		[alert addCancelButtonWithTitle:NSLocalizedString(@"Cancel", nil) block:nil];
-		[alert show];
+		UIAlertController *errView = [UIAlertController alertControllerWithTitle:NSLocalizedString(@"Cannot send logs", nil)
+																		 message:NSLocalizedString(@"Nothing could be collected from your application, aborting now.", nil)
+																  preferredStyle:UIAlertControllerStyleAlert];
+		
+		UIAlertAction* defaultAction = [UIAlertAction actionWithTitle:NSLocalizedString(@"Cancel", nil)
+																style:UIAlertActionStyleDefault
+															  handler:^(UIAlertAction * action) {}];
+		
+		[errView addAction:defaultAction];
+		[self presentViewController:errView animated:YES completion:nil];
 		return;
 	}
 
@@ -803,12 +1028,16 @@ static UICompositeViewDescription *compositeDescription = nil;
 #endif
 
 	if (error != nil) {
-		UIAlertView *alert = [[UIAlertView alloc] initWithTitle:NSLocalizedString(@"Cannot send email", nil)
-														message:error
-													   delegate:nil
-											  cancelButtonTitle:NSLocalizedString(@"Continue", nil)
-											  otherButtonTitles:nil];
-		[alert show];
+		UIAlertController *errView = [UIAlertController alertControllerWithTitle:NSLocalizedString(@"Cannot send email", nil)
+																		 message:error
+																  preferredStyle:UIAlertControllerStyleAlert];
+		
+		UIAlertAction* defaultAction = [UIAlertAction actionWithTitle:NSLocalizedString(@"Continue", nil)
+																style:UIAlertActionStyleDefault
+															  handler:^(UIAlertAction * action) {}];
+		
+		[errView addAction:defaultAction];
+		[self presentViewController:errView animated:YES completion:nil];
 	} else {
 		MFMailComposeViewController *picker = [[MFMailComposeViewController alloc] init];
 		picker.mailComposeDelegate = self;
@@ -831,7 +1060,7 @@ static UICompositeViewDescription *compositeDescription = nil;
 								 fileName:attachment[2]];
 			}
 		}
-		[self presentViewController:picker animated:true completion:nil];
+		[self.view.window.rootViewController presentViewController:picker animated:true completion:nil];
 	}
 }
 
@@ -843,7 +1072,7 @@ static UICompositeViewDescription *compositeDescription = nil;
 	} else {
 		LOGI(@"Mail completed with status: %d", result);
 	}
-	[self dismissViewControllerAnimated:true completion:nil];
+	[controller dismissViewControllerAnimated:true completion:nil];
 }
 
 - (IBAction)onDialerBackClick:(id)sender {
